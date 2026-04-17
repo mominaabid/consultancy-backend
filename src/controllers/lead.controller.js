@@ -4,7 +4,15 @@ const { Lead, User } = db;
 // CREATE LEAD
 export async function createLead(req, res) {
   try {
-    const lead = await Lead.create(req.body);
+    const data = {
+      ...req.body,
+      counsellor_id:
+        req.body.counsellor_id === "" || !req.body.counsellor_id
+          ? null
+          : Number(req.body.counsellor_id),
+    };
+
+    const lead = await Lead.create(data);
     res.status(201).json(lead);
   } catch (error) {
     console.error(error);
