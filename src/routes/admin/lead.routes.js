@@ -1,15 +1,68 @@
+// import { Router } from 'express';
+// // import { createLead, getAllLeads, assignCounsellor, updateStage,updateLead ,deleteLead } from '../../controllers/lead.controller.js';
+// // import auth from '../../middleware/auth.middleware.js';
+// // import role from '../../middleware/role.middleware.js';
+
+// // const router = Router();
+
+// // // router.use(auth, role('admin'));
+
+// // router.post('/', createLead);
+// // router.get('/', getAllLeads);
+// // router.put('/:id/assign', assignCounsellor);
+// // router.put('/:id/stage', updateStage);
+// // router.put('/:id', updateLead);
+// // router.delete('/:id', deleteLead);
+// // export default router;
+// import { Router } from 'express';
+// import {
+//   createLead,
+//   getAllLeads,
+//   getLeadById,
+//   assignCounsellor,
+//   updateStage,
+//   updateLead,
+//   deleteLead,
+// } from '../../controllers/lead.controller.js';
+// import auth from '../../middleware/auth.middleware.js';
+// import role from '../../middleware/role.middleware.js';
+
+// const router = Router();
+
+// router.use(auth, role('admin'));   // all routes below require admin token
+
+// router.post('/',             createLead);
+// router.get('/',              getAllLeads);
+// router.get('/:id',           getLeadById);
+// router.put('/:id/assign',    assignCounsellor);
+// router.put('/:id/stage',     updateStage);
+// router.put('/:id',           updateLead);
+// router.delete('/:id',        deleteLead);
+
+// export default router;
 import { Router } from 'express';
-import { createLead, getAllLeads, assignCounsellor, updateStage } from '../../controllers/lead.controller.js';
+import {
+  createLead,
+  getAllLeads,
+  getLeadById,
+  assignCounsellor,
+  updateStage,
+  updateLead,
+  deleteLead,
+} from '../../controllers/lead.controller.js';
 import auth from '../../middleware/auth.middleware.js';
 import role from '../../middleware/role.middleware.js';
 
 const router = Router();
 
-// router.use(auth, role('admin'));
+router.use(auth, role('admin'));   // all routes below require admin token
 
-router.post('/', createLead);
-router.get('/', getAllLeads);
-router.put('/:id/assign', assignCounsellor);
-router.put('/:id/stage', updateStage);
+router.post('/',             createLead);
+router.get('/',              getAllLeads);
+router.get('/:id',           getLeadById);
+router.put('/:id/assign',    assignCounsellor);
+router.put('/:id/stage',     updateStage);
+router.put('/:id',           updateLead);
+router.delete('/:id',        deleteLead);
 
 export default router;
