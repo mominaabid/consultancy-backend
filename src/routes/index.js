@@ -11,7 +11,7 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes.js';
 import adminLeadRoutes from './admin/lead.routes.js';
-
+import counsellorRoutes from './admin/counsellor.routes.js';
 const router = Router();
 
 // ── Public ──────────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ router.use('/auth', authRoutes);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
 router.use('/admin/leads', adminLeadRoutes);
-
+router.use('/admin/counsellors', counsellorRoutes);
 // ── Add more routes here as you build them ──────────────────────────────────
 // router.use('/counsellor/leads', counsellorLeadRoutes);
 // router.use('/student/lead',     studentLeadRoutes);

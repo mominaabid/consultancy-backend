@@ -1,7 +1,7 @@
 import sequelize from '../../config/db.js';
 import Lead from './Lead.js';
 import User from './User.js';
-
+import { Counsellor } from './counsellor.js';
 // Define associations
 Lead.belongsTo(User, {
   foreignKey: 'counsellor_id',
@@ -11,7 +11,8 @@ Lead.belongsTo(User, {
 const db = {
   sequelize,
   Lead,
-  User
+  User,
+   Counsellor,
 };
 
 export default db;
