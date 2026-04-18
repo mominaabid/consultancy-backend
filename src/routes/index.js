@@ -19,7 +19,7 @@ router.use('/auth', authRoutes);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
 router.use('/admin/leads', adminLeadRoutes);
-router.use('/admin/counsellors', counsellorRoutes);
+router.use('/admin', counsellorRoutes);
 // ── Add more routes here as you build them ──────────────────────────────────
 // router.use('/counsellor/leads', counsellorLeadRoutes);
 // router.use('/student/lead',     studentLeadRoutes);
