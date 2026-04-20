@@ -28,7 +28,7 @@ export const Counsellor = sequelize.define(
 
     role: {
       type: DataTypes.STRING,
-      allowNull: false,
+      defaultValue: "counsellor",
     },
 
     status: {
@@ -50,6 +50,5 @@ export const Counsellor = sequelize.define(
     tableName: "counsellors",
     timestamps: true,
     underscored: true,
-  }
+  },
 );
-

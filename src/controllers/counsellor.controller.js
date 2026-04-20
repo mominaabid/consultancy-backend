@@ -5,7 +5,7 @@ export async function createCounsellor(req, res) {
   try {
     const counsellor = await Counsellor.create(req.body);
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Counsellor created successfully",
       data: counsellor,
     });
@@ -48,19 +48,19 @@ export async function updateCounsellor(req, res) {
   }
 }
 
-// export async function deleteCounsellor(req, res) {
-//   try {
-//     const counsellor = await Counsellor.findByPk(req.params.id);
+export async function deleteCounsellor(req, res) {
+  try {
+    const counsellor = await Counsellor.findByPk(req.params.id);
 
-//     if (!counsellor) {
-//       return res.status(404).json({ message: "Counsellor not found" });
-//     }
+    if (!counsellor) {
+      return res.status(404).json({ message: "Counsellor not found" });
+    }
 
-//     await counsellor.destroy();
+    await counsellor.destroy();
 
-//     res.json({ message: "Counsellor deleted successfully" });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: error.message });
-//   }
-// }
+    res.json({ message: "Counsellor deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}

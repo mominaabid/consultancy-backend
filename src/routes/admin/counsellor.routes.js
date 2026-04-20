@@ -3,7 +3,7 @@ import {
   createCounsellor,
   getAllCounsellors,
   updateCounsellor,
-  // deleteCounsellor,
+  deleteCounsellor,
 } from "../../controllers/counsellor.controller.js";
 
 const router = Router();
@@ -12,6 +12,6 @@ const router = Router();
 router.get("/getCounsellors", getAllCounsellors);
 router.post("/addCounsellor", createCounsellor);
 router.put("/updateCounsellor/:id", updateCounsellor);
-// router.delete("/deleteCounsellor/:id", deleteCounsellor);
+router.delete("/deleteCounsellor/:id", deleteCounsellor);
 
 export default router;
