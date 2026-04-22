@@ -3,6 +3,7 @@ import Lead from "./Lead.js";
 import User from "./User.js";
 import { Counsellor } from "./counsellor.js";
 import PasswordResetToken from "./PasswordResetToken.js";
+import LeadActivityLog from "./LeadActivityLog.js";
 // Define associations
 Lead.belongsTo(User, {
   foreignKey: "counsellor_id",
@@ -15,6 +16,7 @@ const db = {
   User,
   Counsellor,
   PasswordResetToken,
+  LeadActivityLog,
 };
 
 export default db;

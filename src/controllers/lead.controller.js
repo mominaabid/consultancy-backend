@@ -1,10 +1,11 @@
 import crypto from 'crypto';
 import db from '../models/mysql/index.js';
 import { sendPasswordSetupEmail } from '../services/email.service.js';
+import { logActivity } from '../services/activityLog.service.js';
 
 const { Lead, User, PasswordResetToken } = db;
 
-// POST /admin/leads
+// ─── POST /admin/leads ────────────────────────────────────────────────────────
 export async function createLead(req, res) {
   try {
     const data = {
@@ -14,7 +15,19 @@ export async function createLead(req, res) {
           ? null
           : Number(req.body.counsellor_id),
     };
+
     const lead = await Lead.create(data);
+
+    await logActivity({
+      leadId:          lead.id,
+      actionType:      'lead_created',
+      toValue:         lead.status,
+      note:            `Lead created via ${lead.source || 'unknown'} · Phone: ${lead.phone || '—'} · Country: ${lead.preferred_country || '—'}`,
+      performedBy:     req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+
     res.status(201).json(lead);
   } catch (error) {
     console.error(error);
@@ -22,7 +35,7 @@ export async function createLead(req, res) {
   }
 }
 
-// GET /admin/leads
+// ─── GET /admin/leads ─────────────────────────────────────────────────────────
 export async function getAllLeads(req, res) {
   try {
     const where = {};
@@ -41,7 +54,7 @@ export async function getAllLeads(req, res) {
   }
 }
 
-// GET /admin/leads/:id
+// ─── GET /admin/leads/:id ─────────────────────────────────────────────────────
 export async function getLeadById(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id, {
@@ -55,12 +68,34 @@ export async function getLeadById(req, res) {
   }
 }
 
-// PUT /admin/leads/:id
+// ─── PUT /admin/leads/:id ─────────────────────────────────────────────────────
 export async function updateLead(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
     if (!lead) return res.status(404).json({ message: 'Lead not found.' });
+
+    // Track exactly what changed
+    const fields  = ['name', 'email', 'phone', 'preferred_country', 'study_level', 'source'];
+    const changes = [];
+    fields.forEach(field => {
+      if (req.body[field] !== undefined && String(req.body[field]) !== String(lead[field])) {
+        changes.push(`${field}: "${lead[field]}" → "${req.body[field]}"`);
+      }
+    });
+
     await lead.update(req.body);
+
+    await logActivity({
+      leadId:          lead.id,
+      actionType:      'lead_updated',
+      note:            changes.length > 0
+        ? `Updated — ${changes.join(' · ')}`
+        : 'Lead details updated',
+      performedBy:     req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+
     res.json(lead);
   } catch (error) {
     console.error(error);
@@ -68,13 +103,34 @@ export async function updateLead(req, res) {
   }
 }
 
-// PUT /admin/leads/:id/assign
+// ─── PUT /admin/leads/:id/assign ──────────────────────────────────────────────
 export async function assignCounsellor(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
     if (!lead) return res.status(404).json({ message: 'Lead not found.' });
+
+    const prevCounsellor = lead.counsellor_id
+      ? await User.findByPk(lead.counsellor_id, { attributes: ['name'] })
+      : null;
+
+    const newCounsellor = req.body.counsellor_id
+      ? await User.findByPk(req.body.counsellor_id, { attributes: ['name'] })
+      : null;
+
     lead.counsellor_id = req.body.counsellor_id || null;
     await lead.save();
+
+    await logActivity({
+      leadId:          lead.id,
+      actionType:      'counsellor_assigned',
+      fromValue:       prevCounsellor?.name || 'Unassigned',
+      toValue:         newCounsellor?.name  || 'Unassigned',
+      note:            `Counsellor changed from "${prevCounsellor?.name || 'Unassigned'}" to "${newCounsellor?.name || 'Unassigned'}"`,
+      performedBy:     req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+
     res.json(lead);
   } catch (error) {
     console.error(error);
@@ -82,7 +138,7 @@ export async function assignCounsellor(req, res) {
   }
 }
 
-// PUT /admin/leads/:id/stage
+// ─── PUT /admin/leads/:id/stage ───────────────────────────────────────────────
 export async function updateStage(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
@@ -94,26 +150,53 @@ export async function updateStage(req, res) {
     lead.status = newStatus;
     await lead.save();
 
+    // Log every stage change
+    await logActivity({
+      leadId:          lead.id,
+      actionType:      'stage_changed',
+      fromValue:       previousStatus,
+      toValue:         newStatus,
+      note:            `Stage moved from "${previousStatus}" to "${newStatus}"`,
+      performedBy:     req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+
     console.log(`📊 Stage: ${previousStatus} → ${newStatus}`);
 
-    // ── Trigger ONLY when moving TO counseling for first time ──────────────
-    const isMovingToCounseling = newStatus === 'counseling' && previousStatus !== 'counseling';
+    // ─── Counseling trigger ────────────────────────────────────────────────────
+    const isMovingToCounseling =
+      newStatus === 'counseling' && previousStatus !== 'counseling';
 
     if (isMovingToCounseling && lead.email) {
       console.log('🎯 Counseling trigger fired for:', lead.email);
 
-      // Check if student account already exists
-      let student = await User.findOne({ where: { email: lead.email, role: 'student' } });
+      const existingUser = await User.findOne({ where: { email: lead.email } });
 
-      if (student) {
-        // Student exists — just resend a fresh setup link
-        console.log('👤 Student exists, resending setup link...');
+      // If email belongs to staff — skip silently
+      if (existingUser && existingUser.role !== 'student') {
+        console.log('⚠️ Email belongs to staff:', existingUser.role, '— skipping');
+        return res.json(lead);
+      }
 
-        // Delete old tokens for this user
+      let student;
+
+      if (existingUser && existingUser.role === 'student') {
+        // Resend fresh link
+        console.log('👤 Student exists — resending link');
+        student = existingUser;
         await PasswordResetToken.destroy({ where: { user_id: student.id } });
 
+        await logActivity({
+          leadId:          lead.id,
+          actionType:      'setup_email_resent',
+          note:            `Setup email resent to ${lead.email}`,
+          performedBy:     req.user.id,
+          performedByRole: req.user.role,
+          performedByName: req.user.name,
+        });
       } else {
-        // Create fresh student account
+        // Create new student user
         console.log('🆕 Creating new student account...');
         student = await User.create({
           name:          lead.name,
@@ -123,11 +206,20 @@ export async function updateStage(req, res) {
           is_active:     false,
         });
         console.log('✅ Student created with id:', student.id);
+
+        await logActivity({
+          leadId:          lead.id,
+          actionType:      'student_account_created',
+          note:            `Student portal account created for ${lead.email}`,
+          performedBy:     req.user.id,
+          performedByRole: req.user.role,
+          performedByName: req.user.name,
+        });
       }
 
-      // Generate fresh token
+      // Generate token
       const token     = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24hrs
 
       await PasswordResetToken.create({
         user_id:    student.id,
@@ -138,7 +230,6 @@ export async function updateStage(req, res) {
       const setupLink = `${process.env.FRONTEND_URL}/setup-password?token=${token}`;
       console.log('🔗 Setup link:', setupLink);
 
-      // Send email
       const emailResult = await sendPasswordSetupEmail({
         name:      lead.name,
         email:     lead.email,
@@ -146,6 +237,15 @@ export async function updateStage(req, res) {
       });
 
       console.log('📨 Email result:', JSON.stringify(emailResult));
+
+      await logActivity({
+        leadId:          lead.id,
+        actionType:      'setup_email_sent',
+        note:            `Password setup email sent to ${lead.email}. Link expires in 24 hours.`,
+        performedBy:     req.user.id,
+        performedByRole: req.user.role,
+        performedByName: req.user.name,
+      });
     }
 
     res.json(lead);
@@ -155,11 +255,22 @@ export async function updateStage(req, res) {
   }
 }
 
-// DELETE /admin/leads/:id
+// ─── DELETE /admin/leads/:id ──────────────────────────────────────────────────
 export async function deleteLead(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
     if (!lead) return res.status(404).json({ message: 'Lead not found.' });
+
+    // Log before destroy so lead_id still exists
+    await logActivity({
+      leadId:          lead.id,
+      actionType:      'lead_deleted',
+      note:            `Lead "${lead.name}" (${lead.email}) was deleted`,
+      performedBy:     req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+
     await lead.destroy();
     res.json({ message: 'Lead deleted successfully.' });
   } catch (error) {
