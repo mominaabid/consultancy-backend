@@ -1,6 +1,56 @@
 import Conversation from '../models/mongo/Conversation.js';
 import Message       from '../models/mongo/Message.js';
+import db from '../models/mysql/index.js';
+import { Op } from 'sequelize';
+const { Lead, User } = db;
+// POST /chat/sync
+// Call this once — creates conversations for all existing counseling leads
+export async function syncConversations(req, res) {
+  try {
+    // Find all leads with counseling+ status that have a counsellor assigned
+    const leads = await Lead.findAll({
+      where: {
+        status:       ['counseling', 'applied', 'visa', 'success'],
+        counsellor_id: { [Op.ne]: null },
+      },
+      include: [{ model: User, as: 'counsellor', attributes: ['id', 'name'] }],
+    });
 
+    let created = 0;
+
+    for (const lead of leads) {
+      // Find student user by email
+      const studentUser = await User.findOne({
+        where: { email: lead.email, role: 'student' },
+        attributes: ['id', 'name'],
+      });
+
+      if (!studentUser) continue;
+
+      const existing = await Conversation.findOne({
+        student_id:    studentUser.id,
+        counsellor_id: lead.counsellor_id,
+      });
+
+      if (!existing) {
+        await Conversation.create({
+          student_id:      studentUser.id,
+          counsellor_id:   lead.counsellor_id,
+          student_name:    lead.name,
+          counsellor_name: lead.counsellor?.name || 'Counsellor',
+          last_message:    '',
+        });
+        created++;
+        console.log(`💬 Created conversation: ${lead.name} ↔ ${lead.counsellor?.name}`);
+      }
+    }
+
+    res.json({ message: `Sync complete. ${created} conversations created.` });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
 // ─── GET /chat/conversations ──────────────────────────────────────────────────
 // Returns all conversations for the logged-in user (student or counsellor)
 export async function getConversations(req, res) {
