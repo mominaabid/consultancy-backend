@@ -12,7 +12,7 @@ import { Router } from 'express';
 import authRoutes from './auth.routes.js';
 import adminLeadRoutes from './admin/lead.routes.js';
 import counsellorRoutes from './admin/counsellor.routes.js';
-import testRoutes from './test.routes.js';
+// import testRoutes from './test.routes.js';
 import chatRoutes from './chat.routes.js';
 
 const router = Router();
@@ -28,5 +28,5 @@ router.use("/counsellor/leads", adminLeadRoutes); // ← same routes file, role 
 // ── Add more routes here as you build them ──────────────────────────────────
 // router.use('/counsellor/leads', counsellorLeadRoutes);
 // router.use('/student/lead',     studentLeadRoutes);
-router.use("/test", testRoutes);
+// router.use("/test", testRoutes);
 export default router;

@@ -24,7 +24,7 @@ export const Counsellor = sequelize.define(
     email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      unique: false,
       validate: {
         isEmail: true,
       },
@@ -33,6 +33,7 @@ export const Counsellor = sequelize.define(
     phone: {
       type: DataTypes.STRING,
       allowNull: false,
+      unique: true,
     },
 
     cnic: {

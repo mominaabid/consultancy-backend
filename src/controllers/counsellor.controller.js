@@ -11,12 +11,25 @@ export async function createCounsellor(req, res) {
     const { name, father_name, email, phone, cnic, address, role, status } =
       req.body;
 
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
-      return res.status(409).json({
-        message: "This email is already registered.",
-      });
-    }
+    // const existingUser = await User.findOne({
+    //   where: {
+    //     email,
+    //     is_deleted: false,
+    //   },
+    // });
+
+    // const existingCounsellor = await Counsellor.findOne({
+    //   where: {
+    //     email,
+    //     is_deleted: false,
+    //   },
+    // });
+
+    // if (existingUser || existingCounsellor) {
+    //   return res.status(409).json({
+    //     message: "This email is already registered.",
+    //   });
+    // }
 
     const user = await User.create({
       name,
@@ -138,24 +151,88 @@ export async function updateCounsellor(req, res) {
   }
 }
 
+// export async function deleteCounsellor(req, res) {
+//   try {
+//     const counsellor = await Counsellor.findByPk(req.params.id);
+//     if (!counsellor)
+//       return res.status(404).json({ message: "Counsellor not found" });
+
+//     await counsellor.update({ is_deleted: true, status: "inactive" });
+
+//     await User.update(
+//       { is_active: false, is_deleted: true },
+//       {
+//         where: {
+//           email: counsellor.email,
+//           role: "counsellor",
+//           is_deleted: false,
+//         },
+//       },
+//     );
+
+//     await Lead.update(
+//       { counsellor_id: null },
+//       { where: { counsellor_id: counsellor.id } },
+//     );
+
+//     if (req.user) {
+//       await logActivity({
+//         leadId: null,
+//         actionType: "counsellor_deleted",
+//         note: `Counsellor "${counsellor.name}" soft deleted`,
+//         performedBy: req.user.id,
+//         performedByRole: req.user.role,
+//         performedByName: req.user.name,
+//       });
+//     }
+
+//     res.json({ message: "Counsellor deleted successfully" });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: error.message });
+//   }
+// }
+
 export async function deleteCounsellor(req, res) {
   try {
     const counsellor = await Counsellor.findByPk(req.params.id);
-    if (!counsellor)
+    if (!counsellor) {
       return res.status(404).json({ message: "Counsellor not found" });
+    }
 
-    await counsellor.update({ is_deleted: false });
+    // Soft delete the counsellor
+    await counsellor.update({
+      is_deleted: true,
+      status: "inactive",
+    });
 
-    await User.update(
-      { is_active: false },
-      { where: { email: counsellor.email, role: "counsellor" } },
-    );
+    // Try to update the associated user, but don't fail if user doesn't exist
+    try {
+      const user = await User.findOne({
+        where: {
+          email: counsellor.email,
+          role: "counsellor",
+        },
+      });
 
+      if (user) {
+        await user.update({
+          is_active: false,
+          is_deleted: true,
+        });
+      }
+    } catch (userError) {
+      console.warn("Could not update associated user:", userError.message);
+      // Continue with deletion even if user update fails
+    }
+
+    // Unassign leads from this counsellor (optional, based on your needs)
     await Lead.update(
       { counsellor_id: null },
       { where: { counsellor_id: counsellor.id } },
     );
 
+    // Log activity if user is authenticated
     if (req.user) {
       await logActivity({
         leadId: null,
@@ -169,7 +246,10 @@ export async function deleteCounsellor(req, res) {
 
     res.json({ message: "Counsellor deleted successfully" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
+    console.error("Error in deleteCounsellor:", error);
+    res.status(500).json({
+      message: "Failed to delete counsellor",
+      error: error.message,
+    });
   }
 }

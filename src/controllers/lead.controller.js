@@ -1,8 +1,8 @@
-import crypto from 'crypto';
-import db from '../models/mysql/index.js';
-import { sendPasswordSetupEmail } from '../services/email.service.js';
-import { logActivity } from '../services/activityLog.service.js';
-import Conversation from '../models/mongo/Conversation.js';
+import crypto from "crypto";
+import db from "../models/mysql/index.js";
+import { sendPasswordSetupEmail } from "../services/email.service.js";
+import { logActivity } from "../services/activityLog.service.js";
+import Conversation from "../models/mongo/Conversation.js";
 const { Lead, User, PasswordResetToken } = db;
 
 // ─── POST /admin/leads ────────────────────────────────────────────────────────
@@ -156,31 +156,29 @@ export async function assignCounsellor(req, res) {
   }
 }
 
-
-
 // PUT /admin/leads/:id/stage
 export async function updateStage(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
-    if (!lead) return res.status(404).json({ message: 'Lead not found.' });
+    if (!lead) return res.status(404).json({ message: "Lead not found." });
 
     const previousStatus = lead.status;
-    const newStatus      = req.body.status;
-    const userNote       = req.body.note || null;
+    const newStatus = req.body.status;
+    const userNote = req.body.note || null;
 
     lead.status = newStatus;
     await lead.save();
 
     // ── Log stage change ───────────────────────────────────────────────────
     await logActivity({
-      leadId:          lead.id,
-      actionType:      'stage_changed',
-      fromValue:       previousStatus,
-      toValue:         newStatus,
-      note:            userNote
+      leadId: lead.id,
+      actionType: "stage_changed",
+      fromValue: previousStatus,
+      toValue: newStatus,
+      note: userNote
         ? userNote
         : `Stage moved from "${previousStatus}" to "${newStatus}"`,
-      performedBy:     req.user.id,
+      performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
@@ -188,10 +186,10 @@ export async function updateStage(req, res) {
     // ── Log note separately if provided ───────────────────────────────────
     if (userNote) {
       await logActivity({
-        leadId:          lead.id,
-        actionType:      'note_added',
-        note:            userNote,
-        performedBy:     req.user.id,
+        leadId: lead.id,
+        actionType: "note_added",
+        note: userNote,
+        performedBy: req.user.id,
         performedByRole: req.user.role,
         performedByName: req.user.name,
       });
@@ -201,82 +199,86 @@ export async function updateStage(req, res) {
 
     // ── Counseling trigger ─────────────────────────────────────────────────
     const isMovingToCounseling =
-      newStatus === 'counseling' && previousStatus !== 'counseling';
+      newStatus === "counseling" && previousStatus !== "counseling";
 
     if (isMovingToCounseling && lead.email) {
-      console.log('🎯 Counseling trigger fired for:', lead.email);
+      console.log("🎯 Counseling trigger fired for:", lead.email);
 
       const existingUser = await User.findOne({ where: { email: lead.email } });
 
       // If email belongs to admin/counsellor — skip
-      if (existingUser && existingUser.role !== 'student') {
-        console.log('⚠️ Email belongs to staff:', existingUser.role, '— skipping');
+      if (existingUser && existingUser.role !== "student") {
+        console.log(
+          "⚠️ Email belongs to staff:",
+          existingUser.role,
+          "— skipping",
+        );
         return res.json(lead);
       }
 
       let student;
 
-      if (existingUser && existingUser.role === 'student') {
+      if (existingUser && existingUser.role === "student") {
         // Student already exists — resend fresh link
-        console.log('👤 Student exists — resending link');
+        console.log("👤 Student exists — resending link");
         student = existingUser;
         await PasswordResetToken.destroy({ where: { user_id: student.id } });
 
         await logActivity({
-          leadId:          lead.id,
-          actionType:      'setup_email_resent',
-          note:            `Setup email resent to ${lead.email}`,
-          performedBy:     req.user.id,
+          leadId: lead.id,
+          actionType: "setup_email_resent",
+          note: `Setup email resent to ${lead.email}`,
+          performedBy: req.user.id,
           performedByRole: req.user.role,
           performedByName: req.user.name,
         });
       } else {
         // Create new student user
-        console.log('🆕 Creating new student account...');
+        console.log("🆕 Creating new student account...");
         student = await User.create({
-          name:          lead.name,
-          email:         lead.email,
-          password_hash: 'PENDING_SETUP',
-          role:          'student',
-          is_active:     false,
+          name: lead.name,
+          email: lead.email,
+          password_hash: "PENDING_SETUP",
+          role: "student",
+          is_active: false,
         });
-        console.log('✅ Student created with id:', student.id);
+        console.log("✅ Student created with id:", student.id);
 
         await logActivity({
-          leadId:          lead.id,
-          actionType:      'student_account_created',
-          note:            `Student portal account created for ${lead.email}`,
-          performedBy:     req.user.id,
+          leadId: lead.id,
+          actionType: "student_account_created",
+          note: `Student portal account created for ${lead.email}`,
+          performedBy: req.user.id,
           performedByRole: req.user.role,
           performedByName: req.user.name,
         });
       }
 
       // ── Generate token + send email ──────────────────────────────────────
-      const token     = crypto.randomBytes(32).toString('hex');
+      const token = crypto.randomBytes(32).toString("hex");
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24hrs
 
       await PasswordResetToken.create({
-        user_id:    student.id,
+        user_id: student.id,
         token,
         expires_at: expiresAt,
       });
 
       const setupLink = `${process.env.FRONTEND_URL}/setup-password?token=${token}`;
-      console.log('🔗 Setup link:', setupLink);
+      console.log("🔗 Setup link:", setupLink);
 
       const emailResult = await sendPasswordSetupEmail({
-        name:      lead.name,
-        email:     lead.email,
+        name: lead.name,
+        email: lead.email,
         setupLink,
       });
-      console.log('📨 Email result:', JSON.stringify(emailResult));
+      console.log("📨 Email result:", JSON.stringify(emailResult));
 
       await logActivity({
-        leadId:          lead.id,
-        actionType:      'setup_email_sent',
-        note:            `Password setup email sent to ${lead.email}. Link expires in 24 hours.`,
-        performedBy:     req.user.id,
+        leadId: lead.id,
+        actionType: "setup_email_sent",
+        note: `Password setup email sent to ${lead.email}. Link expires in 24 hours.`,
+        performedBy: req.user.id,
         performedByRole: req.user.role,
         performedByName: req.user.name,
       });
@@ -284,43 +286,47 @@ export async function updateStage(req, res) {
       // ── Auto-create MongoDB conversation ─────────────────────────────────
       if (lead.counsellor_id) {
         const counsellor = await User.findByPk(lead.counsellor_id, {
-          attributes: ['id', 'name'],
+          attributes: ["id", "name"],
         });
 
         const existingConv = await Conversation.findOne({
-          student_id:    student.id,
+          student_id: student.id,
           counsellor_id: lead.counsellor_id,
         });
 
         if (!existingConv) {
           await Conversation.create({
-            student_id:      student.id,
-            counsellor_id:   lead.counsellor_id,
-            student_name:    lead.name,
-            counsellor_name: counsellor?.name || 'Counsellor',
-            last_message:    '',
+            student_id: student.id,
+            counsellor_id: lead.counsellor_id,
+            student_name: lead.name,
+            counsellor_name: counsellor?.name || "Counsellor",
+            last_message: "",
           });
-          console.log(`💬 Conversation created: ${lead.name} ↔ ${counsellor?.name}`);
+          console.log(
+            `💬 Conversation created: ${lead.name} ↔ ${counsellor?.name}`,
+          );
 
           await logActivity({
-            leadId:          lead.id,
-            actionType:      'conversation_started',
-            note:            `Chat conversation opened between ${lead.name} and ${counsellor?.name}`,
-            performedBy:     req.user.id,
+            leadId: lead.id,
+            actionType: "conversation_started",
+            note: `Chat conversation opened between ${lead.name} and ${counsellor?.name}`,
+            performedBy: req.user.id,
             performedByRole: req.user.role,
             performedByName: req.user.name,
           });
         } else {
-          console.log('💬 Conversation already exists — skipping');
+          console.log("💬 Conversation already exists — skipping");
         }
       } else {
-        console.log('⚠️ No counsellor assigned to lead — conversation not created');
+        console.log(
+          "⚠️ No counsellor assigned to lead — conversation not created",
+        );
       }
     }
 
     res.json(lead);
   } catch (error) {
-    console.error('❌ updateStage error:', error);
+    console.error("❌ updateStage error:", error);
     res.status(500).json({ message: error.message });
   }
 }
@@ -340,7 +346,7 @@ export async function deleteLead(req, res) {
       performedByName: req.user.name,
     });
 
-    await lead.update({ is_deleted: false });
+    await lead.update({ is_deleted: true });
 
     res.json({ message: "Lead deleted successfully." });
   } catch (error) {
