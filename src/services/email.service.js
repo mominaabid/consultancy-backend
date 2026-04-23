@@ -6,11 +6,15 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  secure: true,
 });
 
 export async function sendPasswordSetupEmail({ name, email, setupLink }) {
   try {
     console.log("📧 Sending email to:", email);
+
+    await transporter.verify();
+    console.log("✅ Mail server ready");
 
     const mailOptions = {
       from: `"Educatia" <${process.env.EMAIL_USER}>`,
@@ -39,6 +43,8 @@ export async function sendPasswordSetupEmail({ name, email, setupLink }) {
     const info = await transporter.sendMail(mailOptions);
 
     console.log("✅ Email sent:", info.messageId);
+    console.log("📨 Full response:", info);
+
     return info;
   } catch (error) {
     console.error("❌ Email error:", error);
