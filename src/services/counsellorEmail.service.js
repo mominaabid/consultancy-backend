@@ -8,18 +8,25 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export async function sendPasswordSetupEmail({ name, email, setupLink }) {
+export async function sendCounsellorPasswordSetupEmail({
+  name,
+  email,
+  setupLink,
+}) {
   try {
-    console.log("📧 Sending email to:", email);
+    console.log("📧 Sending counsellor email to:", email);
 
     const mailOptions = {
       from: `"Educatia" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "Set up your Educatia student account",
+      subject: "Set up your Educatia counsellor account",
       html: `
         <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
           <h2 style="color: #0d9488;">Welcome to Educatia, ${name}!</h2>
-          <p>Your counsellor has moved your application forward. Click below to set your password.</p>
+          
+          <p>
+            Your counsellor account has been created. Click the button below to set your password and access your dashboard.
+          </p>
 
           <a href="${setupLink}" 
              style="display:inline-block; background:#0d9488; color:#fff; 
@@ -30,7 +37,7 @@ export async function sendPasswordSetupEmail({ name, email, setupLink }) {
 
           <p style="color:#6b7280; font-size:13px;">
             This link expires in <strong>24 hours</strong>.<br>
-            If you didn't expect this, ignore it.
+            If you did not expect this email, please contact your administrator.
           </p>
         </div>
       `,
@@ -38,10 +45,10 @@ export async function sendPasswordSetupEmail({ name, email, setupLink }) {
 
     const info = await transporter.sendMail(mailOptions);
 
-    console.log("✅ Email sent:", info.messageId);
+    console.log("✅ Counsellor email sent:", info.messageId);
     return info;
   } catch (error) {
-    console.error("❌ Email error:", error);
+    console.error("❌ Counsellor email error:", error);
     throw error;
   }
 }

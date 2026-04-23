@@ -15,7 +15,7 @@ const Lead = sequelize.define('Lead', {
   study_level: DataTypes.STRING,
   status: {
     type: DataTypes.ENUM(
-      'new', 'contacted', 'counseling', 'applied', 'visa', 'success', 'lost'
+      'new', 'contacted', 'counseling', 'applied', 'visa', 'success', 'rejected'
     ),
     defaultValue: 'new'
   },

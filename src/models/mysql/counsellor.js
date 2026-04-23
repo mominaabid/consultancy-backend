@@ -18,7 +18,7 @@ export const Counsellor = sequelize.define(
     father_name: {
       type: DataTypes.STRING,
       allowNull: false,
-      field: 'father_name'
+      field: "father_name",
     },
 
     email: {
@@ -39,11 +39,6 @@ export const Counsellor = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
-    },
-
-    password: {
-      type: DataTypes.STRING,
-      allowNull: false,
     },
 
     address: {
@@ -70,10 +65,15 @@ export const Counsellor = sequelize.define(
       type: DataTypes.FLOAT,
       defaultValue: 0,
     },
+
+    is_deleted: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
   },
   {
     tableName: "counsellors",
     timestamps: true,
     underscored: true, // Ye automatically camelCase ko snake_case mein convert karta hai DB ke liye
-  }
+  },
 );
