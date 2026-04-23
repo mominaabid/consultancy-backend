@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import db from '../models/mysql/index.js';
 import { sendPasswordSetupEmail } from '../services/email.service.js';
 import { logActivity } from '../services/activityLog.service.js';
-
+import Conversation from '../models/mongo/Conversation.js';
 const { Lead, User, PasswordResetToken } = db;
 
 // ─── POST /admin/leads ────────────────────────────────────────────────────────
@@ -146,17 +146,19 @@ export async function updateStage(req, res) {
 
     const previousStatus = lead.status;
     const newStatus      = req.body.status;
+    const userNote       = req.body.note || null; // ✅ accept note from frontend
 
     lead.status = newStatus;
     await lead.save();
 
-    // Log every stage change
     await logActivity({
       leadId:          lead.id,
       actionType:      'stage_changed',
       fromValue:       previousStatus,
       toValue:         newStatus,
-      note:            `Stage moved from "${previousStatus}" to "${newStatus}"`,
+      note:            userNote
+        ? `${userNote}` // ✅ use counsellor's note
+        : `Stage moved from "${previousStatus}" to "${newStatus}"`,
       performedBy:     req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
@@ -167,7 +169,26 @@ export async function updateStage(req, res) {
     // ─── Counseling trigger ────────────────────────────────────────────────────
     const isMovingToCounseling =
       newStatus === 'counseling' && previousStatus !== 'counseling';
+if (isMovingToCounseling && lead.email) {
 
+  console.log("💬 Creating chat conversation...");
+
+  await Conversation.create({
+    student_id: lead.id,              // MySQL lead ID
+    counsellor_id: lead.counsellor_id,
+
+    student_name: lead.name,
+    counsellor_name: newCounsellor?.name || "Counsellor",
+
+    last_message: "",
+    last_message_at: new Date(),
+
+    student_unread: 0,
+    counsellor_unread: 0
+  });
+
+  console.log("✅ Conversation created in MongoDB");
+}
     if (isMovingToCounseling && lead.email) {
       console.log('🎯 Counseling trigger fired for:', lead.email);
 

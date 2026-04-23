@@ -13,11 +13,13 @@ import authRoutes from './auth.routes.js';
 import adminLeadRoutes from './admin/lead.routes.js';
 import counsellorRoutes from './admin/counsellor.routes.js';
 import testRoutes from './test.routes.js';
+import chatRoutes from './chat.routes.js';
+
 const router = Router();
 
 // ── Public ──────────────────────────────────────────────────────────────────
 router.use('/auth', authRoutes);
-
+router.use('/chat', chatRoutes);
 // ── Admin ────────────────────────────────────────────────────────────────────
 router.use('/admin/leads', adminLeadRoutes);
 router.use('/admin', counsellorRoutes);
