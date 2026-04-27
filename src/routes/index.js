@@ -5,7 +5,9 @@ import adminLeadRoutes from './admin/lead.routes.js';
 import counsellorRoutes from './admin/counsellor.routes.js';
 import chatRoutes from './chat.routes.js';
 import studentDocumentRoutes from './student/document.routes.js';
+import studentApplicationRoutes from "./student/application.routes.js";
 import counsellorDocumentRoutes from './counsellor/document.routes.js';
+
 
 const router = Router();
 
@@ -15,6 +17,7 @@ router.use('/chat', chatRoutes);
 
 // Student routes
 router.use('/student/documents', studentDocumentRoutes);
+router.use("/", studentApplicationRoutes);
 
 // Admin & Counsellor routes
 router.use('/admin/leads', adminLeadRoutes);

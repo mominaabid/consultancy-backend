@@ -24,5 +24,17 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mominaabid/consultancy-backend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mominaabid/consultancy-backend/issues"
+  },
+  "homepage": "https://github.com/mominaabid/consultancy-backend#readme",
+  "description": ""
 }
