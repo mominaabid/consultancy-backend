@@ -4,7 +4,8 @@ import {
   getMessages,
   startConversation,
   markAsRead,
-  syncConversations
+  syncConversations,
+  getAllConversations
 } from '../controllers/chat.controller.js';
 import auth from '../middleware/auth.middleware.js';
 import role from '../middleware/role.middleware.js';
@@ -20,4 +21,5 @@ router.get('/messages/:conversationId',   getMessages);
 router.post('/conversations/start',       startConversation);
 router.put('/messages/read/:conversationId', markAsRead);
 router.post('/sync', syncConversations); // admin only - run once
+router.get('/admin/conversations', role('admin'), getAllConversations);
 export default router;
