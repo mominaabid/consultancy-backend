@@ -7,6 +7,8 @@ import chatRoutes from './chat.routes.js';
 import studentDocumentRoutes from './student/document.routes.js';
 import studentApplicationRoutes from "./student/application.routes.js";
 import counsellorDocumentRoutes from './counsellor/document.routes.js';
+import counsellorApplicationRoutes from './counsellor/application.routes.js';
+
 
 
 const router = Router();
@@ -18,6 +20,8 @@ router.use('/chat', chatRoutes);
 // Student routes
 router.use('/student/documents', studentDocumentRoutes);
 router.use("/", studentApplicationRoutes);
+router.use('/counsellor', counsellorApplicationRoutes);
+
 
 // Admin & Counsellor routes
 router.use('/admin/leads', adminLeadRoutes);

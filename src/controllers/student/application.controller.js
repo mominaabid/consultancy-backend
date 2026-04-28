@@ -10,6 +10,10 @@ export const addApplication = async (req, res) => {
   try {
     const data = req.body;
 
+    if (!data.user_id) {
+      return res.status(400).json({ message: "user_id is required" });
+    }
+
     if (req.file) {
       data.profile_picture = `/uploads/${req.file.filename}`;
     }

@@ -5,6 +5,7 @@ const Application = sequelize.define(
   "Application",
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    user_id: { type: DataTypes.INTEGER, allowNull: false },
     full_name: DataTypes.STRING,
     email: DataTypes.STRING,
     phone: DataTypes.STRING,
@@ -44,6 +45,7 @@ const Application = sequelize.define(
   },
   {
     tableName: "applications",
+    timestamps: true,
   },
 );
 

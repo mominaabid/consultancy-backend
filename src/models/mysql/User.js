@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../../config/db.js";
+import Application from "./Application.js";
 
 const User = sequelize.define(
   "User",
@@ -17,7 +18,6 @@ const User = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
-
     is_deleted: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
@@ -28,5 +28,8 @@ const User = sequelize.define(
     timestamps: true,
   },
 );
+
+User.hasMany(Application, { foreignKey: "user_id", as: "applications" });
+Application.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
 export default User;
