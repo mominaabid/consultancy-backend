@@ -1,6 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../../config/db.js";
-
+ 
 const Application = sequelize.define(
   "Application",
   {
@@ -16,23 +16,23 @@ const Application = sequelize.define(
     passport_number: DataTypes.STRING,
     nationality: DataTypes.STRING,
     profile_picture: DataTypes.TEXT,
-
+ 
     last_degree: DataTypes.STRING,
     institute: DataTypes.STRING,
     cgpa: DataTypes.STRING,
     passing_year: DataTypes.INTEGER,
     english_test: DataTypes.STRING,
     test_score: DataTypes.STRING,
-
+ 
     target_country: DataTypes.STRING,
     target_university: DataTypes.STRING,
     course: DataTypes.STRING,
     counselor_notes: DataTypes.TEXT,
-
+ 
     status: {
       type: DataTypes.ENUM(
         "inquiry",
-        "evaluation", 
+        "evaluation",
         "application submitted",
         "offer letter received",
         "offer letter not received",
@@ -42,7 +42,7 @@ const Application = sequelize.define(
       ),
       defaultValue: "inquiry",
     },
-
+ 
     // Stage date fields
     inquiry_date: DataTypes.DATE,
     evaluation_date: DataTypes.DATE,
@@ -52,7 +52,7 @@ const Application = sequelize.define(
     visa_filed_date: DataTypes.DATE,
     approved_date: DataTypes.DATE,
     reject_date: DataTypes.DATE,
-
+ 
     deadline: DataTypes.STRING,
     round: DataTypes.STRING,
   },
@@ -61,5 +61,5 @@ const Application = sequelize.define(
     timestamps: true,
   },
 );
-
+ 
 export default Application;
