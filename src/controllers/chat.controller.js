@@ -74,6 +74,7 @@ export async function getConversations(req, res) {
 
 // ─── GET /chat/messages/:conversationId ───────────────────────────────────────
 // Returns message history for a conversation (paginated)
+// GET /chat/messages/:conversationId
 export async function getMessages(req, res) {
   try {
     const { conversationId } = req.params;
@@ -81,13 +82,17 @@ export async function getMessages(req, res) {
     const limit = parseInt(req.query.limit) || 50;
     const skip  = (page - 1) * limit;
 
-    // Verify user belongs to this conversation
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) return res.status(404).json({ message: 'Conversation not found.' });
 
     const userId = req.user.id;
-    if (conversation.student_id !== userId && conversation.counsellor_id !== userId) {
-      return res.status(403).json({ message: 'Access denied.' });
+    const role   = req.user.role;
+
+    // ✅ Admin can see all conversations — only restrict student/counsellor
+    if (role !== 'admin') {
+      if (conversation.student_id !== userId && conversation.counsellor_id !== userId) {
+        return res.status(403).json({ message: 'Access denied.' });
+      }
     }
 
     const messages = await Message.find({ conversation_id: conversationId })
@@ -95,13 +100,14 @@ export async function getMessages(req, res) {
       .skip(skip)
       .limit(limit);
 
-    // Return oldest first for display
     res.json(messages.reverse());
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
 }
+
+
 
 // ─── POST /chat/conversations/start ───────────────────────────────────────────
 // Create or get existing conversation between student and counsellor
@@ -166,6 +172,20 @@ export async function markAsRead(req, res) {
     await Conversation.findByIdAndUpdate(conversationId, { [unreadField]: 0 });
 
     res.json({ message: 'Messages marked as read.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+
+
+// GET /chat/admin/conversations  (admin only — sees all)
+export async function getAllConversations(req, res) {
+  try {
+    const conversations = await Conversation.find({})
+      .sort({ last_message_at: -1 });
+    res.json(conversations);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });

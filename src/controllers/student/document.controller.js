@@ -107,8 +107,33 @@ export async function uploadDocument(req, res) {
 
     // Determine status
     let newStatus = 'pending';
+    let historyUpdate = null;
+    
     if (existingDoc && existingDoc.status === 'rejected') {
       newStatus = 'review';
+      
+      // Get existing history or initialize empty array
+      let history = existingDoc.status_history || [];
+      
+      // Add re-upload event to history (preserve all previous history)
+      history.push({
+        id: Date.now(),
+        status: existingDoc.status,
+        action: 'reupload',
+        performed_by: req.user.id,
+        performed_by_name: req.user.name,
+        performed_by_role: req.user.role,
+        performed_at: new Date(),
+        note: `Document re-uploaded after rejection. Previous rejection reason: ${existingDoc.rejection_reason || 'No reason provided'}`,
+        previous_rejection_reason: existingDoc.rejection_reason,
+        old_file_path: existingDoc.file_path,
+        new_file_path: fileUrl
+      });
+      
+      historyUpdate = history;
+      
+      console.log('📝 Re-upload history entry added');
+      console.log('📚 Total history entries:', history.length);
     }
 
     let document;
@@ -119,24 +144,36 @@ export async function uploadDocument(req, res) {
         await deleteFile(oldFileKey);
       }
 
-      // Update existing document
-      await existingDoc.update({
+      // Prepare update data
+      const updateData = {
         file_path: fileUrl,
         status: newStatus,
         rejection_reason: null,
         reviewed_by: null,
         reviewed_at: null,
         updated_at: new Date(),
-      });
+        uploaded_at: new Date(),
+      };
+      
+      // Add history and review count if this is a re-upload
+      if (historyUpdate) {
+        updateData.status_history = historyUpdate;
+        updateData.review_count = (existingDoc.review_count || 0) + 1;
+      }
+      
+      // Update existing document
+      await existingDoc.update(updateData);
       document = existingDoc;
     } else {
-      // Create new document
+      // Create new document with empty history
       document = await Document.create({
         student_id: lead.id,
         doc_type: doc_type,
         file_path: fileUrl,
         status: newStatus,
         uploaded_at: new Date(),
+        status_history: [], // Initialize empty history array
+        review_count: 0
       });
     }
 
@@ -158,6 +195,8 @@ export async function uploadDocument(req, res) {
         status: document.status,
         file_url: document.file_path,
         submitted_at: document.uploaded_at,
+        status_history: document.status_history || [],
+        review_count: document.review_count || 0
       },
     });
   } catch (error) {

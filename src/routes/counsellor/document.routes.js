@@ -14,5 +14,17 @@ router.use(auth);  // ← use auth directly
 router.get('/all', getAllDocuments);
 router.put('/:id/verify', verifyDocument);
 router.put('/:id/reject', rejectDocument);
-
+router.get('/history/:id', async (req, res) => {
+  try {
+    const document = await Document.findByPk(req.params.id);
+    res.json({
+      current_status: document.status,
+      history_length: document.status_history?.length || 0,
+      history: document.status_history || [],
+      review_count: document.review_count || 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 export default router;
