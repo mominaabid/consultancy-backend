@@ -31,14 +31,27 @@ const Application = sequelize.define(
 
     status: {
       type: DataTypes.ENUM(
-        "In Progress",
-        "Submitted",
-        "Under Review",
-        "Accepted",
-        "Rejected",
+        "inquiry",
+        "evaluation", 
+        "application submitted",
+        "offer letter received",
+        "offer letter not received",
+        "visa filed",
+        "approved",
+        "reject"
       ),
-      defaultValue: "In Progress",
+      defaultValue: "inquiry",
     },
+
+    // Stage date fields
+    inquiry_date: DataTypes.DATE,
+    evaluation_date: DataTypes.DATE,
+    application_submitted_date: DataTypes.DATE,
+    offer_received_date: DataTypes.DATE,
+    offer_not_received_date: DataTypes.DATE,
+    visa_filed_date: DataTypes.DATE,
+    approved_date: DataTypes.DATE,
+    reject_date: DataTypes.DATE,
 
     deadline: DataTypes.STRING,
     round: DataTypes.STRING,
