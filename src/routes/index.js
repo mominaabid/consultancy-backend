@@ -10,8 +10,9 @@ import counsellorDocumentRoutes from "./counsellor/document.routes.js";
 import counsellorApplicationRoutes from "./counsellor/application.routes.js";
 import adminPaymentRoutes from "./admin/payment.routes.js";
 import adminApplicationRoutes from "./admin/application.routes.js";
-
 import studentPaymentRoutes from "./student/payment.routes.js";
+import sseRoutes from './sse.routes.js';
+
 
 const router = Router();
 
@@ -32,5 +33,7 @@ router.use("/counsellor/leads", adminLeadRoutes);
 router.use("/counsellor/documents", counsellorDocumentRoutes);
 router.use("/admin/payments", adminPaymentRoutes);
 router.use("/admin", adminApplicationRoutes);
+router.use('/sse', sseRoutes);
+
 
 export default router;

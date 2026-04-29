@@ -12,6 +12,8 @@ import {
   sendVisaApprovedEmail,
   sendApplicationRejectedEmail,
 } from "../../services/email.service.js";
+import sseManager from '../../utils/sseManager.js';
+
 
 export const getStudentsWithApplications = async (req, res) => {
   try {
@@ -224,6 +226,94 @@ async function sendStatusUpdateEmail(application, oldStatus, newStatus) {
 }
 
 // Update application status (counsellor action)
+// export const updateApplicationStatusAsCounsellor = async (req, res) => {
+//   try {
+//     const { applicationId } = req.params;
+//     const { status, counsellor_notes } = req.body;
+
+//     // Validate status against new enum values
+//     const validStatuses = [
+//       "inquiry",
+//       "evaluation",
+//       "application submitted",
+//       "offer letter received",
+//       "offer letter not received",
+//       "visa filed",
+//       "approved",
+//       "reject",
+//     ];
+
+//     if (!validStatuses.includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+//       });
+//     }
+
+//     const application = await Application.findByPk(applicationId);
+
+//     if (!application) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Application not found",
+//       });
+//     }
+
+//     // Store old status for comparison
+//     const oldStatus = application.status;
+
+//     // Map status to corresponding date field
+//     const statusDateMap = {
+//       inquiry: "inquiry_date",
+//       evaluation: "evaluation_date",
+//       "application submitted": "application_submitted_date",
+//       "offer letter received": "offer_received_date",
+//       "offer letter not received": "offer_not_received_date",
+//       "visa filed": "visa_filed_date",
+//       approved: "approved_date",
+//       reject: "reject_date",
+//     };
+
+//     // Prepare update data
+//     const updateData = {
+//       status: status,
+//       counselor_notes: counsellor_notes || application.counselor_notes,
+//     };
+
+//     // Add timestamp if status has a corresponding date field
+//     if (statusDateMap[status]) {
+//       updateData[statusDateMap[status]] = new Date();
+//       console.log(`Setting ${statusDateMap[status]} to:`, new Date());
+//     }
+
+//     await application.update(updateData);
+
+//     // ✅ SEND EMAIL NOTIFICATION (Don't await to avoid blocking response)
+//     if (oldStatus !== status && application.email) {
+//       // Fetch fresh application data with updated notes
+//       const updatedApplication = await Application.findByPk(applicationId);
+//       sendStatusUpdateEmail(updatedApplication, oldStatus, status).catch(
+//         (error) => {
+//           console.error("Email notification failed but status updated:", error);
+//         },
+//       );
+//     }
+
+//     res.json({
+//       success: true,
+//       message: `Application status updated to ${status}. A notification email has been sent to the student.`,
+//       application: application,
+//     });
+//   } catch (err) {
+//     console.error("Error updating application status:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error updating application status",
+//     });
+//   }
+// };
+
+
 export const updateApplicationStatusAsCounsellor = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -285,6 +375,42 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
     }
 
     await application.update(updateData);
+
+    // Fetch user info for the student
+    const student = await User.findByPk(application.user_id, {
+      attributes: ['id', 'name', 'email']
+    });
+
+    // ⭐ SEND SSE NOTIFICATION to the student ⭐
+    const statusDisplayMap = {
+      "inquiry": "Inquiry",
+      "evaluation": "Evaluation",
+      "application submitted": "Application Submitted",
+      "offer letter received": "Offer Letter Received",
+      "offer letter not received": "Offer Letter Not Received",
+      "visa filed": "Visa Filed",
+      "approved": "Approved",
+      "reject": "Rejected"
+    };
+
+    const notificationMessage = `Your application for ${application.target_university || 'university'} (${application.course || 'course'}) status changed from "${statusDisplayMap[oldStatus] || oldStatus}" to "${statusDisplayMap[status] || status}".`;
+
+    // Send SSE event to the student
+    if (student && student.id) {
+      sseManager.sendToUser(student.id, {
+        type: 'status_change',
+        applicationId: application.id,
+        oldStatus: oldStatus,
+        newStatus: status,
+        oldStatusLabel: statusDisplayMap[oldStatus] || oldStatus,
+        newStatusLabel: statusDisplayMap[status] || status,
+        university: application.target_university,
+        course: application.course,
+        message: notificationMessage,
+        timestamp: new Date().toISOString()
+      });
+      console.log(`SSE notification sent to student ${student.id} for status change`);
+    }
 
     // ✅ SEND EMAIL NOTIFICATION (Don't await to avoid blocking response)
     if (oldStatus !== status && application.email) {
