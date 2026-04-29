@@ -58,6 +58,8 @@ export async function setTotalFees(req, res) {
 }
 
 // ─── GET OFFER LETTER STUDENTS ────────────────────────────────────────────
+// src/controllers/admin/payment.controller.js - Fix this function
+
 export async function getOfferLetterStudents(req, res) {
   try {
     const applications = await Application.findAll({
@@ -70,13 +72,13 @@ export async function getOfferLetterStudents(req, res) {
         attributes: ['id', 'name', 'email'],
       });
       
-      // Get the payment record that contains total_fees
+      // Fix: Use 'paid_at' instead of 'created_at' (or remove ORDER BY)
       const feeRecord = await Payment.findOne({
         where: { application_id: app.id, is_deleted: false },
-        order: [['created_at', 'ASC']]
+        // Remove ORDER BY or use paid_at if you want
+        // order: [['paid_at', 'ASC']]
       });
       
-      // Get all completed payments for this application
       const payments = await Payment.findAll({
         where: { application_id: app.id, is_deleted: false, status: 'completed' },
       });
