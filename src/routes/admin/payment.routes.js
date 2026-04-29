@@ -9,6 +9,7 @@ import {
   getAllPayments,
   deletePayment,
   getPaymentProof,
+  addPayment,
 } from '../../controllers/admin/payment.controller.js';
 
 const router = express.Router();
@@ -16,6 +17,7 @@ const router = express.Router();
 router.use(auth);
 
 router.post('/set-fees', setTotalFees);
+router.post('/', addPayment);  // ← ADD THIS ROUTE
 router.get('/offer-letter-students', getOfferLetterStudents);
 router.get('/pending-verifications', getPendingVerifications);
 router.put('/verify/:id', verifyPayment);
