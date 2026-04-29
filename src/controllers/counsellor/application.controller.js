@@ -2,6 +2,16 @@ import Application from "../../models/mysql/Application.js";
 import User from "../../models/mysql/User.js";
 import { Op } from "sequelize";
 import sequelize from "../../config/db.js";
+import {
+  sendApplicationInquiryEmail,
+  sendApplicationEvaluationEmail,
+  sendApplicationSubmittedEmail,
+  sendOfferReceivedEmail,
+  sendOfferNotReceivedEmail,
+  sendVisaFiledEmail,
+  sendVisaApprovedEmail,
+  sendApplicationRejectedEmail,
+} from "../../services/email.service.js";
 
 export const getStudentsWithApplications = async (req, res) => {
   try {
@@ -100,6 +110,119 @@ export const getStudentApplications = async (req, res) => {
   }
 };
 
+// Helper function to send status-specific emails
+async function sendStatusUpdateEmail(application, oldStatus, newStatus) {
+  const studentEmail = application.email;
+  const studentName = application.full_name || "Student";
+  const university = application.target_university || "the university";
+  const course = application.course || "your selected course";
+  const applicationId = application.id;
+
+  console.log(
+    `📧 Preparing to send email for status change: ${oldStatus} -> ${newStatus}`,
+  );
+
+  try {
+    switch (newStatus) {
+      case "inquiry":
+        await sendApplicationInquiryEmail({
+          name: studentName,
+          email: studentEmail,
+          university,
+          course,
+          applicationId,
+        });
+        break;
+
+      case "evaluation":
+        await sendApplicationEvaluationEmail({
+          name: studentName,
+          email: studentEmail,
+          university,
+          course,
+          applicationId,
+        });
+        break;
+
+      case "application submitted":
+        await sendApplicationSubmittedEmail({
+          name: studentName,
+          email: studentEmail,
+          university,
+          course,
+          applicationId,
+          deadline: application.deadline,
+        });
+        break;
+
+      case "offer letter received":
+        await sendOfferReceivedEmail({
+          name: studentName,
+          email: studentEmail,
+          university,
+          course,
+          applicationId,
+        });
+        break;
+
+      case "offer letter not received":
+        await sendOfferNotReceivedEmail({
+          name: studentName,
+          email: studentEmail,
+          university,
+          course,
+          applicationId,
+          reason:
+            application.counselor_notes ||
+            "The university is still processing applications",
+        });
+        break;
+
+      case "visa filed":
+        await sendVisaFiledEmail({
+          name: studentName,
+          email: studentEmail,
+          university,
+          course,
+          applicationId,
+          visaCenter:
+            application.visa_center || "local visa application center",
+        });
+        break;
+
+      case "approved":
+        await sendVisaApprovedEmail({
+          name: studentName,
+          email: studentEmail,
+          university,
+          course,
+          applicationId,
+        });
+        break;
+
+      case "reject":
+        await sendApplicationRejectedEmail({
+          name: studentName,
+          email: studentEmail,
+          university,
+          course,
+          applicationId,
+          reason:
+            application.counselor_notes ||
+            "The application did not meet requirements",
+        });
+        break;
+
+      default:
+        console.log(`No email template defined for status: ${newStatus}`);
+        break;
+    }
+  } catch (emailError) {
+    console.error(`Failed to send ${newStatus} email:`, emailError);
+    // Don't throw - application update already succeeded
+  }
+}
+
 // Update application status (counsellor action)
 export const updateApplicationStatusAsCounsellor = async (req, res) => {
   try {
@@ -134,14 +257,49 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
       });
     }
 
-    await application.update({
+    // Store old status for comparison
+    const oldStatus = application.status;
+
+    // Map status to corresponding date field
+    const statusDateMap = {
+      inquiry: "inquiry_date",
+      evaluation: "evaluation_date",
+      "application submitted": "application_submitted_date",
+      "offer letter received": "offer_received_date",
+      "offer letter not received": "offer_not_received_date",
+      "visa filed": "visa_filed_date",
+      approved: "approved_date",
+      reject: "reject_date",
+    };
+
+    // Prepare update data
+    const updateData = {
       status: status,
       counselor_notes: counsellor_notes || application.counselor_notes,
-    });
+    };
+
+    // Add timestamp if status has a corresponding date field
+    if (statusDateMap[status]) {
+      updateData[statusDateMap[status]] = new Date();
+      console.log(`Setting ${statusDateMap[status]} to:`, new Date());
+    }
+
+    await application.update(updateData);
+
+    // ✅ SEND EMAIL NOTIFICATION (Don't await to avoid blocking response)
+    if (oldStatus !== status && application.email) {
+      // Fetch fresh application data with updated notes
+      const updatedApplication = await Application.findByPk(applicationId);
+      sendStatusUpdateEmail(updatedApplication, oldStatus, status).catch(
+        (error) => {
+          console.error("Email notification failed but status updated:", error);
+        },
+      );
+    }
 
     res.json({
       success: true,
-      message: "Application status updated successfully",
+      message: `Application status updated to ${status}. A notification email has been sent to the student.`,
       application: application,
     });
   } catch (err) {
