@@ -6,6 +6,7 @@ import {
   updateApplication,
   updateApplicationStatus,
   deleteApplication,
+  
 } from "../../controllers/student/application.controller.js";
 import auth from "../../middleware/auth.middleware.js";
 import { upload } from "../../middleware/upload.middleware.js";

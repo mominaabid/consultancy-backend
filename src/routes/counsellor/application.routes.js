@@ -6,6 +6,7 @@ import {
   getApplicationStats,
 } from "../../controllers/counsellor/application.controller.js";
 import auth from "../../middleware/auth.middleware.js";
+
 const router = express.Router();
 
 router.use(auth);
