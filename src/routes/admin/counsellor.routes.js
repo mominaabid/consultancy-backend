@@ -1,3 +1,4 @@
+// counsellor.routes.js
 import { Router } from "express";
 import {
   createCounsellor,
@@ -5,10 +6,16 @@ import {
   updateCounsellor,
   deleteCounsellor,
 } from "../../controllers/counsellor.controller.js";
+import auth from "../../middleware/auth.middleware.js";
+import role from "../../middleware/role.middleware.js";
 
 const router = Router();
 
-// matches your frontend BASE_URL endpoints
+// Apply auth and admin role middleware to all routes
+router.use(auth);
+router.use(role("admin"));
+
+// Now these routes are protected
 router.get("/getCounsellors", getAllCounsellors);
 router.post("/addCounsellor", createCounsellor);
 router.put("/updateCounsellor/:id", updateCounsellor);

@@ -7,14 +7,19 @@ import {
   updateApplicationStatus,
   deleteApplication,
 } from "../../controllers/student/application.controller.js";
-
+import auth from "../../middleware/auth.middleware.js";
 import { upload } from "../../middleware/upload.middleware.js";
 
 const router = Router();
+router.use(auth);
 
 router.get("/user/profile", getProfile);
 router.get("/getApplications", getApplications);
-router.post("/addApplication", upload.single("profile_picture"), addApplication);
+router.post(
+  "/addApplication",
+  upload.single("profile_picture"),
+  addApplication,
+);
 router.put(
   "/editApplication/:id",
   upload.single("profile_picture"),
