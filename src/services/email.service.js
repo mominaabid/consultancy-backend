@@ -171,7 +171,7 @@ export async function sendApplicationSubmittedEmail({
   university,
   course,
   applicationId,
-  deadline,
+  // deadline,
 }) {
   try {
     console.log("📧 Sending application submitted email to:", email);
@@ -200,7 +200,7 @@ export async function sendApplicationSubmittedEmail({
                 <tr><td style="padding: 8px 0;"><strong>Application ID:</strong>NonNull<td>#${applicationId}NonNull</tr>
                 <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>🏛️ ${university}NonNull</tr>
                 <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>📚 ${course}NonNull</tr>
-                ${deadline ? `<tr><td style="padding: 8px 0;"><strong>Application Deadline:</strong>NonNull<td>⚠️ ${new Date(deadline).toLocaleDateString()}NonNull` : ''}
+                // ${deadline ? `<tr><td style="padding: 8px 0;"><strong>Application Deadline:</strong>NonNull<td>⚠️ ${new Date(deadline).toLocaleDateString()}NonNull` : ''}
               </table>
             </div>
             
@@ -269,7 +269,7 @@ export async function sendOfferReceivedEmail({
               <h3 style="color: #d97706; margin: 0 0 10px 0;">📝 Next Steps:</h3>
               <ul style="color: #4b5563;">
                 <li>✅ Review your offer letter carefully</li>
-                <li>📅 Check the acceptance deadline</li>
+                // <li>📅 Check the acceptance deadline</li>
                 <li>💰 Review tuition fees and scholarship details</li>
                 <li>✉️ Contact your counsellor to discuss the offer</li>
               </ul>
@@ -576,7 +576,7 @@ export async function sendApplicationConfirmationEmail({
   university,
   course,
   applicationId,
-  deadline,
+  // deadline,
 }) {
   try {
     console.log("📧 Sending application confirmation email to:", email);
@@ -635,10 +635,10 @@ export async function sendApplicationConfirmationEmail({
                 ${
                   deadline
                     ? `
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Application Deadline:</strong>NonNull
-                  <td style="padding: 8px 0; color: #dc2626; font-size: 14px; font-weight: bold;">⚠️ ${new Date(deadline).toLocaleDateString()}NonNull
-                </tr>
+                // <tr>
+                //   <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Application Deadline:</strong>NonNull
+                //   <td style="padding: 8px 0; color: #dc2626; font-size: 14px; font-weight: bold;">⚠️ ${new Date(deadline).toLocaleDateString()}NonNull
+                // </tr>
                 `
                     : ""
                 }

@@ -53,8 +53,8 @@ const Application = sequelize.define(
     approved_date: DataTypes.DATE,
     reject_date: DataTypes.DATE,
  
-    deadline: DataTypes.STRING,
-    round: DataTypes.STRING,
+    // deadline: DataTypes.STRING,
+    // round: DataTypes.STRING,
   },
   {
     tableName: "applications",

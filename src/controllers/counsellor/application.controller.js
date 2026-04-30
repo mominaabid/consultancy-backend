@@ -46,7 +46,6 @@ export const getStudentsWithApplications = async (req, res) => {
           target_university: app.target_university,
           course: app.course,
           status: app.status,
-          deadline: app.deadline,
           created_at: app.created_at,
           documents: [],
         })) || [],
@@ -92,8 +91,6 @@ export const getStudentApplications = async (req, res) => {
       course: app.course,
       target_country: app.target_country,
       status: app.status,
-      deadline: app.deadline,
-      round: app.round,
       counselor_notes: app.counselor_notes,
       created_at: app.created_at,
     }));
@@ -153,7 +150,6 @@ async function sendStatusUpdateEmail(application, oldStatus, newStatus) {
           university,
           course,
           applicationId,
-          deadline: application.deadline,
         });
         break;
 

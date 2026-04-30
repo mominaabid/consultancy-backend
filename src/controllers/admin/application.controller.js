@@ -46,7 +46,6 @@ export const getAllApplications = async (req, res) => {
       progress: calculateProgress(app),
       created_at: app.created_at,
       updated_at: app.updated_at,
-      deadline: app.deadline,
     }));
 
     res.json(transformedApps);
@@ -185,7 +184,6 @@ export const getApplicationById = async (req, res) => {
       progress: calculateProgress(application),
       created_at: application.created_at,
       updated_at: application.updated_at,
-      deadline: application.deadline,
       submission_date: application.application_submitted_date,
 
       // Document information
@@ -216,7 +214,6 @@ export const getApplicationById = async (req, res) => {
       // Other info
       target_country: application.target_country,
       counselor_notes: application.counselor_notes,
-      round: application.round,
 
       // Status dates
       inquiry_date: application.inquiry_date,
