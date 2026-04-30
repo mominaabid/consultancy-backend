@@ -49,7 +49,6 @@ export async function sendPasswordSetupEmail({ name, email, setupLink }) {
   }
 }
 
-// ✅ Application Inquiry Email - When counsellor initiates inquiry
 export async function sendApplicationInquiryEmail({
   name,
   email,
@@ -81,9 +80,9 @@ export async function sendApplicationInquiryEmail({
             <div style="background: #f0fdf4; border-left: 4px solid #0d9488; padding: 20px; border-radius: 12px; margin: 25px 0;">
               <h3 style="color: #0d9488; margin: 0 0 15px 0;">📋 Application Details</h3>
               <table style="width: 100%;">
-                <tr><td style="padding: 8px 0;"><strong>Application ID:</strong></td><td>#${applicationId}</td></tr>
-                <tr><td style="padding: 8px 0;"><strong>University:</strong></td><td>🏛️ ${university}</td></tr>
-                <tr><td style="padding: 8px 0;"><strong>Course:</strong></td><td>📚 ${course}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Application ID:</strong>NonNull<td>#${applicationId}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>🏛️ ${university}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>📚 ${course}NonNull</tr>
               </table>
             </div>
             
@@ -108,7 +107,6 @@ export async function sendApplicationInquiryEmail({
   }
 }
 
-// ✅ Application Evaluation Email
 export async function sendApplicationEvaluationEmail({
   name,
   email,
@@ -167,7 +165,6 @@ export async function sendApplicationEvaluationEmail({
   }
 }
 
-// ✅ Application Submitted Email (Student submitted to university)
 export async function sendApplicationSubmittedEmail({
   name,
   email,
@@ -200,10 +197,10 @@ export async function sendApplicationSubmittedEmail({
             <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 20px; border-radius: 12px; margin: 25px 0;">
               <h3 style="color: #2563eb; margin: 0 0 15px 0;">📋 Submission Details</h3>
               <table style="width: 100%;">
-                <tr><td style="padding: 8px 0;"><strong>Application ID:</strong></td><td>#${applicationId}</td></tr>
-                <tr><td style="padding: 8px 0;"><strong>University:</strong></td><td>🏛️ ${university}</td></tr>
-                <tr><td style="padding: 8px 0;"><strong>Course:</strong></td><td>📚 ${course}</td></tr>
-                ${deadline ? `<tr><td style="padding: 8px 0;"><strong>Application Deadline:</strong></td><td>⚠️ ${new Date(deadline).toLocaleDateString()}</td></tr>` : ''}
+                <tr><td style="padding: 8px 0;"><strong>Application ID:</strong>NonNull<td>#${applicationId}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>🏛️ ${university}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>📚 ${course}NonNull</tr>
+                ${deadline ? `<tr><td style="padding: 8px 0;"><strong>Application Deadline:</strong>NonNull<td>⚠️ ${new Date(deadline).toLocaleDateString()}NonNull` : ''}
               </table>
             </div>
             
@@ -234,7 +231,6 @@ export async function sendApplicationSubmittedEmail({
   }
 }
 
-// ✅ Offer Letter Received Email
 export async function sendOfferReceivedEmail({
   name,
   email,
@@ -300,7 +296,6 @@ export async function sendOfferReceivedEmail({
   }
 }
 
-// ✅ Offer Letter Not Received Email
 export async function sendOfferNotReceivedEmail({
   name,
   email,
@@ -365,7 +360,6 @@ export async function sendOfferNotReceivedEmail({
   }
 }
 
-// ✅ Visa Filed Email
 export async function sendVisaFiledEmail({
   name,
   email,
@@ -398,9 +392,9 @@ export async function sendVisaFiledEmail({
             <div style="background: #f5f3ff; border-left: 4px solid #8b5cf6; padding: 20px; border-radius: 12px; margin: 25px 0;">
               <h3 style="color: #7c3aed; margin: 0 0 15px 0;">📋 Visa Details</h3>
               <table style="width: 100%;">
-                <tr><td style="padding: 8px 0;"><strong>University:</strong></td><td>${university}</td></tr>
-                <tr><td style="padding: 8px 0;"><strong>Course:</strong></td><td>${course}</td></tr>
-                <tr><td style="padding: 8px 0;"><strong>Visa Center:</strong></td><td>🏢 ${visaCenter || "Your local visa application center"}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>${university}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>${course}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>Visa Center:</strong>NonNull<td>🏢 ${visaCenter || "Your local visa application center"}NonNull</tr>
               </table>
             </div>
             
@@ -434,7 +428,6 @@ export async function sendVisaFiledEmail({
   }
 }
 
-// ✅ Visa Approved Email
 export async function sendVisaApprovedEmail({
   name,
   email,
@@ -512,7 +505,6 @@ export async function sendVisaApprovedEmail({
   }
 }
 
-// ✅ Application Rejected Email
 export async function sendApplicationRejectedEmail({
   name,
   email,
@@ -578,7 +570,6 @@ export async function sendApplicationRejectedEmail({
   }
 }
 
-// ✅ NEW: Application confirmation email function (Keep existing)
 export async function sendApplicationConfirmationEmail({
   name,
   email,
@@ -606,13 +597,11 @@ export async function sendApplicationConfirmationEmail({
       html: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
           
-          <!-- Header -->
           <div style="background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); padding: 30px 20px; text-align: center;">
             <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">🎓 Application Created!</h1>
             <p style="color: #ccfbf1; margin: 10px 0 0 0;">Your journey to studying abroad begins here</p>
           </div>
           
-          <!-- Body -->
           <div style="padding: 30px; background: white;">
             <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 22px;">
               Hello ${name}! 👋
@@ -623,33 +612,32 @@ export async function sendApplicationConfirmationEmail({
               Our team will review your application and guide you through the admission process.
             </p>
             
-            <!-- Application Details Card -->
             <div style="background: #f0fdf4; border-left: 4px solid #0d9488; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
               <h3 style="color: #0d9488; margin: 0 0 15px 0; font-size: 18px;">📋 Application Details</h3>
               
               <table style="width: 100%; border-collapse: collapse;">
                 <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px; width: 120px;"><strong>Application ID:</strong></td>
-                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">#${applicationId}</td>
+                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px; width: 120px;"><strong>Application ID:</strong>NonNull
+                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">#${applicationId}NonNull
                 </tr>
                 <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>University:</strong></td>
-                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">🏛️ ${university}</td>
+                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>University:</strong>NonNull
+                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">🏛️ ${university}NonNull
                 </tr>
                 <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Course:</strong></td>
-                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📚 ${course}</td>
+                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Course:</strong>NonNull
+                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📚 ${course}NonNull
                 </tr>
                 <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Submission Date:</strong></td>
-                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📅 ${currentDate}</td>
+                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Submission Date:</strong>NonNull
+                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📅 ${currentDate}NonNull
                 </tr>
                 ${
                   deadline
                     ? `
                 <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Application Deadline:</strong></td>
-                  <td style="padding: 8px 0; color: #dc2626; font-size: 14px; font-weight: bold;">⚠️ ${new Date(deadline).toLocaleDateString()}</td>
+                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Application Deadline:</strong>NonNull
+                  <td style="padding: 8px 0; color: #dc2626; font-size: 14px; font-weight: bold;">⚠️ ${new Date(deadline).toLocaleDateString()}NonNull
                 </tr>
                 `
                     : ""
@@ -657,7 +645,6 @@ export async function sendApplicationConfirmationEmail({
               </table>
             </div>
             
-            <!-- Next Steps -->
             <div style="margin-bottom: 25px;">
               <h3 style="color: #1f2937; margin: 0 0 15px 0; font-size: 18px;">📝 Next Steps</h3>
               <ul style="color: #4b5563; line-height: 1.8; padding-left: 20px; margin: 0;">
@@ -668,7 +655,6 @@ export async function sendApplicationConfirmationEmail({
               </ul>
             </div>
             
-            <!-- Dashboard Link -->
             <div style="text-align: center; margin: 30px 0;">
               <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}/student/applications" 
                  style="display: inline-block; background: #0d9488; color: white; padding: 12px 32px; 
@@ -678,7 +664,6 @@ export async function sendApplicationConfirmationEmail({
               </a>
             </div>
             
-            <!-- Support Info -->
             <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; text-align: center; margin-top: 20px;">
               <p style="color: #6b7280; font-size: 13px; margin: 0;">
                 📧 Need help? Contact us at ${process.env.EMAIL_USER}<br>
@@ -687,7 +672,6 @@ export async function sendApplicationConfirmationEmail({
             </div>
           </div>
           
-          <!-- Footer -->
           <div style="background: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 0;">
               &copy; ${new Date().getFullYear()} Educatia. All rights reserved.<br>
@@ -704,5 +688,93 @@ export async function sendApplicationConfirmationEmail({
   } catch (error) {
     console.error("❌ Failed to send application confirmation email:", error);
     throw error;
+  }
+}
+
+export async function sendChatNotificationEmail({
+  recipientName,
+  recipientEmail,
+  senderName,
+  senderRole,
+  messagePreview,
+  conversationId,
+}) {
+  // Basic validation
+  if (!recipientEmail) {
+    console.error('❌ Chat notification skipped: No recipient email provided');
+    return { error: 'No email', sent: false };
+  }
+
+  if (!recipientName) {
+    recipientName = "User";
+  }
+
+  try {
+    const isStudent = senderRole === 'counsellor';
+    const portalLink = isStudent
+      ? `${process.env.FRONTEND_URL}/student/chat`
+      : `${process.env.FRONTEND_URL}/counsellor/chats`;
+
+    const themeColor = isStudent ? '#0d9488' : '#7c3aed';
+    const senderLabel = senderRole === 'counsellor' ? 'Your Counsellor' : 'Your Student';
+
+    const mailOptions = {
+      from: `"Educatia" <${process.env.EMAIL_USER}>`,
+      to: recipientEmail,
+      subject: `💬 New message from ${senderName} - Educatia`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #f9fafb; border-radius: 16px; overflow: hidden;">
+          
+          <div style="background: linear-gradient(135deg, ${themeColor} 0%, ${themeColor}cc 100%); padding: 24px 20px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 22px;">💬 New Message</h1>
+            <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0 0; font-size: 14px;">
+              You have a new message from ${senderLabel}
+            </p>
+          </div>
+
+          <div style="padding: 28px; background: white;">
+            <p style="color: #374151; font-size: 15px; margin: 0 0 20px 0;">
+              Hello <strong>${recipientName}</strong> 👋
+            </p>
+
+            <p style="color: #6b7280; font-size: 14px; margin: 0 0 20px 0;">
+              <strong>${senderName}</strong> sent you a message on Educatia:
+            </p>
+
+            <div style="background: #f3f4f6; border-left: 4px solid ${themeColor}; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+              <p style="color: #1f2937; font-size: 14px; margin: 0; font-style: italic; line-height: 1.6;">
+                "${messagePreview ? (messagePreview.length >= 100 ? messagePreview.substring(0, 100) + '...' : messagePreview) : 'No message preview available'}"
+              </p>
+            </div>
+
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${portalLink}"
+                 style="display: inline-block; background: ${themeColor}; color: white; 
+                        padding: 12px 32px; border-radius: 8px; text-decoration: none; 
+                        font-weight: bold; font-size: 15px;">
+                💬 Reply Now
+              </a>
+            </div>
+
+            <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">
+              Log in to your Educatia portal to view and reply to this message.
+            </p>
+          </div>
+
+          <div style="background: #f9fafb; padding: 16px; text-align: center; border-top: 1px solid #e5e7eb;">
+            <p style="color: #9ca3af; font-size: 11px; margin: 0;">
+              © ${new Date().getFullYear()} Educatia · You received this because someone messaged you on the platform.
+            </p>
+          </div>
+        </div>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Chat notification sent to ${recipientEmail}:`, info.messageId);
+    return { success: true, messageId: info.messageId, sent: true };
+  } catch (error) {
+    console.error('❌ Chat notification email error:', error);
+    return { error: error.message, sent: false };
   }
 }

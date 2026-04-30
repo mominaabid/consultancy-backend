@@ -1,7 +1,9 @@
-import jwt         from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import Conversation from '../models/mongo/Conversation.js';
-import Message      from '../models/mongo/Message.js';
-
+import Message from '../models/mongo/Message.js';
+import db from '../models/mysql/index.js';
+import { sendChatNotificationEmail } from '../services/email.service.js';
+const { User } = db;
 const onlineUsers = new Map(); // userId → socketId
 
 export function initSocket(io) {
@@ -12,7 +14,7 @@ export function initSocket(io) {
     if (!token) return next(new Error('Authentication required.'));
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user   = decoded;
+      socket.user = decoded;
       next();
     } catch {
       next(new Error('Invalid token.'));
@@ -45,49 +47,78 @@ export function initSocket(io) {
         const conversation = await Conversation.findById(conversationId);
         if (!conversation) return;
 
-        if (conversation.student_id    !== user.id &&
-            conversation.counsellor_id !== user.id) return;
+        if (conversation.student_id !== user.id &&
+          conversation.counsellor_id !== user.id) return;
 
         const message = await Message.create({
           conversation_id: conversationId,
-          sender_id:       user.id,
-          sender_role:     user.role,
-          sender_name:     user.name,
-          content:         content.trim(),
-          type:            'text',
-          is_read:         false,
+          sender_id: user.id,
+          sender_role: user.role,
+          sender_name: user.name,
+          content: content.trim(),
+          type: 'text',
+          is_read: false,
         });
 
-        const isStudent       = user.role === 'student';
+        const isStudent = user.role === 'student';
         const recipientUnread = isStudent ? 'counsellor_unread' : 'student_unread';
 
         await Conversation.findByIdAndUpdate(conversationId, {
-          last_message:    content.trim(),
+          last_message: content.trim(),
           last_message_at: new Date(),
           $inc: { [recipientUnread]: 1 },
         });
 
         io.to(conversationId).emit('receive_message', {
-          _id:             message._id,
+          _id: message._id,
           conversation_id: conversationId,
-          sender_id:       user.id,
-          sender_role:     user.role,
-          sender_name:     user.name,
-          content:         message.content,
-          is_read:         false,
-          createdAt:       message.createdAt,
+          sender_id: user.id,
+          sender_role: user.role,
+          sender_name: user.name,
+          content: message.content,
+          is_read: false,
+          createdAt: message.createdAt,
         });
 
-        const recipientId       = isStudent ? conversation.counsellor_id : conversation.student_id;
+        const recipientId = isStudent ? conversation.counsellor_id : conversation.student_id;
         const recipientSocketId = onlineUsers.get(recipientId);
+        
         if (recipientSocketId) {
           io.to(recipientSocketId).emit('new_message_notification', {
             conversationId,
             senderName: user.name,
             senderRole: user.role,
-            preview:    content.trim().slice(0, 60),
+            preview: content.trim().slice(0, 60),
           });
         }
+
+        // ✅ Send email notification to recipient
+        try {
+          // Get recipient details from MySQL
+          const recipient = await User.findByPk(recipientId);
+          
+          if (recipient && recipient.email) {
+            console.log(`📧 Sending email notification to: ${recipient.name} (${recipient.email})`);
+            
+            // Send email asynchronously - don't await to not block message sending
+            sendChatNotificationEmail({
+              recipientName: recipient.name || "User",
+              recipientEmail: recipient.email,
+              senderName: user.name,
+              senderRole: user.role,
+              messagePreview: content.trim(),
+              conversationId: conversationId,
+            }).catch(err => {
+              console.error('❌ Email notification error (non-blocking):', err.message);
+            });
+          } else {
+            console.log(`⚠️ Email skipped: Recipient ${recipientId} not found or has no email`);
+          }
+        } catch (emailErr) {
+          // Don't let email errors break the message sending
+          console.error('❌ Email notification setup error:', emailErr.message);
+        }
+
       } catch (err) {
         console.error('❌ send_message error:', err.message);
         socket.emit('message_error', { message: 'Failed to send message.' });
@@ -106,29 +137,25 @@ export function initSocket(io) {
 
     // ── WebRTC Signaling events ────────────────────────────────────────────
 
-    // Caller initiates call
     socket.on('call_user', ({ targetUserId, callType, signal, callerName, callerRole }) => {
       const targetSocketId = onlineUsers.get(targetUserId);
 
       if (!targetSocketId) {
-        // Target is offline
         socket.emit('call_failed', { reason: 'User is offline.' });
         return;
       }
 
       console.log(`📞 ${user.name} calling user ${targetUserId} (${callType})`);
 
-      // Send incoming call to target
       io.to(targetSocketId).emit('incoming_call', {
-        from:        user.id,
-        fromName:    user.name,
-        fromRole:    user.role,
-        callType,             // 'audio' | 'video'
-        signal,               // WebRTC offer signal
+        from: user.id,
+        fromName: user.name,
+        fromRole: user.role,
+        callType,
+        signal,
       });
     });
 
-    // Callee accepts and sends answer signal back
     socket.on('call_accepted', ({ targetUserId, signal }) => {
       const targetSocketId = onlineUsers.get(targetUserId);
       if (targetSocketId) {
@@ -137,7 +164,6 @@ export function initSocket(io) {
       }
     });
 
-    // Either party rejects the call
     socket.on('call_rejected', ({ targetUserId }) => {
       const targetSocketId = onlineUsers.get(targetUserId);
       if (targetSocketId) {
@@ -146,7 +172,6 @@ export function initSocket(io) {
       }
     });
 
-    // Either party ends the call
     socket.on('call_ended', ({ targetUserId }) => {
       const targetSocketId = onlineUsers.get(targetUserId);
       if (targetSocketId) {
@@ -155,7 +180,6 @@ export function initSocket(io) {
       }
     });
 
-    // ICE candidate exchange (for NAT traversal)
     socket.on('ice_candidate', ({ targetUserId, candidate }) => {
       const targetSocketId = onlineUsers.get(targetUserId);
       if (targetSocketId) {
