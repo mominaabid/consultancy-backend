@@ -9,9 +9,19 @@ import "./src/models/mysql/index.js";
 import routes from "./src/routes/index.js";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs"; // Add this import
 
+// Define __filename and __dirname first (before using them)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Now you can use __dirname
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log("✅ Uploads directory created");
+}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -43,7 +53,6 @@ async function start() {
   console.log("✅ MySQL connected");
 
   server.listen(PORT, () => {
-    // ✅ use server.listen not app.listen
     console.log(`🚀 Server running on http://localhost:${PORT}`);
   });
 }
