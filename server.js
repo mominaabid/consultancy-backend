@@ -1,3 +1,4 @@
+import 'mysql2';
 import 'dotenv/config';
 console.log("🔥 ENV TEST:", process.env.ABLY_API_KEY);
 import express from "express";
