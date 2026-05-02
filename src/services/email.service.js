@@ -1,23 +1,15 @@
-import nodemailer from "nodemailer";
+import { Resend } from 'resend';
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  secure: true,
-});
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 
 export async function sendPasswordSetupEmail({ name, email, setupLink }) {
   try {
     console.log("📧 Sending email to:", email);
 
-    await transporter.verify();
-    console.log("✅ Mail server ready");
-
-    const mailOptions = {
-      from: `"Educatia" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia" <${FROM_EMAIL}>`,
       to: email,
       subject: "Set up your Educatia student account",
       html: `
@@ -38,11 +30,11 @@ export async function sendPasswordSetupEmail({ name, email, setupLink }) {
           </p>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Email error:", error);
     throw error;
@@ -59,8 +51,8 @@ export async function sendApplicationInquiryEmail({
   try {
     console.log("📧 Sending inquiry email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia Admissions" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Admissions" <${FROM_EMAIL}>`,
       to: email,
       subject: `Application Inquiry Started - ${university}`,
       html: `
@@ -81,7 +73,7 @@ export async function sendApplicationInquiryEmail({
               <h3 style="color: #0d9488; margin: 0 0 15px 0;">📋 Application Details</h3>
               <table style="width: 100%;">
                 <tr><td style="padding: 8px 0;"><strong>Application ID:</strong>NonNull<td>#${applicationId}NonNull</tr>
-                <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>🏛️ ${university}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>🏛️ ${university}NonNull</td>
                 <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>📚 ${course}NonNull</tr>
               </table>
             </div>
@@ -96,11 +88,11 @@ export async function sendApplicationInquiryEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Inquiry email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Inquiry email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send inquiry email:", error);
     throw error;
@@ -117,8 +109,8 @@ export async function sendApplicationEvaluationEmail({
   try {
     console.log("📧 Sending evaluation email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia Admissions" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Admissions" <${FROM_EMAIL}>`,
       to: email,
       subject: `Application Under Evaluation - ${university}`,
       html: `
@@ -154,11 +146,11 @@ export async function sendApplicationEvaluationEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Evaluation email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Evaluation email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send evaluation email:", error);
     throw error;
@@ -171,13 +163,12 @@ export async function sendApplicationSubmittedEmail({
   university,
   course,
   applicationId,
-  // deadline,
 }) {
   try {
     console.log("📧 Sending application submitted email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia Admissions" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Admissions" <${FROM_EMAIL}>`,
       to: email,
       subject: `Application Submitted to University - ${university}`,
       html: `
@@ -200,7 +191,6 @@ export async function sendApplicationSubmittedEmail({
                 <tr><td style="padding: 8px 0;"><strong>Application ID:</strong>NonNull<td>#${applicationId}NonNull</tr>
                 <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>🏛️ ${university}NonNull</tr>
                 <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>📚 ${course}NonNull</tr>
-                // ${deadline ? `<tr><td style="padding: 8px 0;"><strong>Application Deadline:</strong>NonNull<td>⚠️ ${new Date(deadline).toLocaleDateString()}NonNull` : ''}
               </table>
             </div>
             
@@ -220,11 +210,11 @@ export async function sendApplicationSubmittedEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Application submitted email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Application submitted email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send application submitted email:", error);
     throw error;
@@ -241,8 +231,8 @@ export async function sendOfferReceivedEmail({
   try {
     console.log("📧 Sending offer received email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia Admissions" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Admissions" <${FROM_EMAIL}>`,
       to: email,
       subject: `🎉 Offer Letter Received - ${university}`,
       html: `
@@ -269,7 +259,6 @@ export async function sendOfferReceivedEmail({
               <h3 style="color: #d97706; margin: 0 0 10px 0;">📝 Next Steps:</h3>
               <ul style="color: #4b5563;">
                 <li>✅ Review your offer letter carefully</li>
-                // <li>📅 Check the acceptance deadline</li>
                 <li>💰 Review tuition fees and scholarship details</li>
                 <li>✉️ Contact your counsellor to discuss the offer</li>
               </ul>
@@ -285,11 +274,11 @@ export async function sendOfferReceivedEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Offer received email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Offer received email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send offer received email:", error);
     throw error;
@@ -307,8 +296,8 @@ export async function sendOfferNotReceivedEmail({
   try {
     console.log("📧 Sending offer not received email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia Admissions" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Admissions" <${FROM_EMAIL}>`,
       to: email,
       subject: `Application Status Update - ${university}`,
       html: `
@@ -340,7 +329,7 @@ export async function sendOfferNotReceivedEmail({
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="mailto:${process.env.EMAIL_USER}" 
+              <a href="mailto:${process.env.RESEND_FROM_EMAIL}" 
                  style="display: inline-block; background: #f97316; color: white; padding: 12px 32px; 
                         border-radius: 8px; text-decoration: none; font-weight: bold;">
                 📧 Contact Counsellor
@@ -349,11 +338,11 @@ export async function sendOfferNotReceivedEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Offer not received email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Offer not received email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send offer not received email:", error);
     throw error;
@@ -371,8 +360,8 @@ export async function sendVisaFiledEmail({
   try {
     console.log("📧 Sending visa filed email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia Visas" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Visas" <${FROM_EMAIL}>`,
       to: email,
       subject: `Visa Application Filed - ${university}`,
       html: `
@@ -393,8 +382,8 @@ export async function sendVisaFiledEmail({
               <h3 style="color: #7c3aed; margin: 0 0 15px 0;">📋 Visa Details</h3>
               <table style="width: 100%;">
                 <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>${university}NonNull</tr>
-                <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>${course}NonNull</tr>
-                <tr><td style="padding: 8px 0;"><strong>Visa Center:</strong>NonNull<td>🏢 ${visaCenter || "Your local visa application center"}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>${course}NonNull</td>
+                <tr><td style="padding: 8px 0;"><strong>Visa Center:</strong>NonNull<td>🏢 ${visaCenter || "Your local visa application center"}NonNull</td>
               </table>
             </div>
             
@@ -417,11 +406,11 @@ export async function sendVisaFiledEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Visa filed email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Visa filed email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send visa filed email:", error);
     throw error;
@@ -438,8 +427,8 @@ export async function sendVisaApprovedEmail({
   try {
     console.log("📧 Sending visa approved email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia Visas" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Visas" <${FROM_EMAIL}>`,
       to: email,
       subject: `🎉 Visa Approved! - ${university}`,
       html: `
@@ -494,11 +483,11 @@ export async function sendVisaApprovedEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Visa approved email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Visa approved email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send visa approved email:", error);
     throw error;
@@ -516,8 +505,8 @@ export async function sendApplicationRejectedEmail({
   try {
     console.log("📧 Sending application rejected email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia Admissions" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Admissions" <${FROM_EMAIL}>`,
       to: email,
       subject: `Application Status Update - ${university}`,
       html: `
@@ -550,7 +539,7 @@ export async function sendApplicationRejectedEmail({
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="mailto:${process.env.EMAIL_USER}" 
+              <a href="mailto:${process.env.RESEND_FROM_EMAIL}" 
                  style="display: inline-block; background: #dc2626; color: white; padding: 12px 32px; 
                         border-radius: 8px; text-decoration: none; font-weight: bold;">
                 📧 Discuss Alternatives with Counsellor
@@ -559,11 +548,11 @@ export async function sendApplicationRejectedEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Application rejected email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Application rejected email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send rejection email:", error);
     throw error;
@@ -576,13 +565,9 @@ export async function sendApplicationConfirmationEmail({
   university,
   course,
   applicationId,
-  // deadline,
 }) {
   try {
     console.log("📧 Sending application confirmation email to:", email);
-
-    await transporter.verify();
-    console.log("✅ Mail server ready");
 
     const currentDate = new Date().toLocaleDateString("en-US", {
       year: "numeric",
@@ -590,8 +575,8 @@ export async function sendApplicationConfirmationEmail({
       day: "numeric",
     });
 
-    const mailOptions = {
-      from: `"Educatia Admissions" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Admissions" <${FROM_EMAIL}>`,
       to: email,
       subject: `Application Created Successfully - ${university}`,
       html: `
@@ -616,32 +601,10 @@ export async function sendApplicationConfirmationEmail({
               <h3 style="color: #0d9488; margin: 0 0 15px 0; font-size: 18px;">📋 Application Details</h3>
               
               <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px; width: 120px;"><strong>Application ID:</strong>NonNull
-                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">#${applicationId}NonNull
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>University:</strong>NonNull
-                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">🏛️ ${university}NonNull
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Course:</strong>NonNull
-                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📚 ${course}NonNull
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Submission Date:</strong>NonNull
-                  <td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📅 ${currentDate}NonNull
-                </tr>
-                ${
-                  deadline
-                    ? `
-                // <tr>
-                //   <td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Application Deadline:</strong>NonNull
-                //   <td style="padding: 8px 0; color: #dc2626; font-size: 14px; font-weight: bold;">⚠️ ${new Date(deadline).toLocaleDateString()}NonNull
-                // </tr>
-                `
-                    : ""
-                }
+                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px; width: 120px;"><strong>Application ID:</strong>NonNull<td style="padding: 8px 0; color: #1f2937; font-size: 14px;">#${applicationId}NonNull</tr>
+                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>University:</strong>NonNull<td style="padding: 8px 0; color: #1f2937; font-size: 14px;">🏛️ ${university}NonNull</tr>
+                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Course:</strong>NonNull<td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📚 ${course}NonNull</tr>
+                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Submission Date:</strong>NonNull<td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📅 ${currentDate}</td></tr>
               </table>
             </div>
             
@@ -666,7 +629,7 @@ export async function sendApplicationConfirmationEmail({
             
             <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; text-align: center; margin-top: 20px;">
               <p style="color: #6b7280; font-size: 13px; margin: 0;">
-                📧 Need help? Contact us at ${process.env.EMAIL_USER}<br>
+                📧 Need help? Contact us at ${process.env.RESEND_FROM_EMAIL}<br>
                 ⏰ Response time: Within 24 hours
               </p>
             </div>
@@ -680,11 +643,11 @@ export async function sendApplicationConfirmationEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Application confirmation email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Application confirmation email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Failed to send application confirmation email:", error);
     throw error;
@@ -699,15 +662,12 @@ export async function sendChatNotificationEmail({
   messagePreview,
   conversationId,
 }) {
-  // Basic validation
   if (!recipientEmail) {
     console.error('❌ Chat notification skipped: No recipient email provided');
     return { error: 'No email', sent: false };
   }
 
-  if (!recipientName) {
-    recipientName = "User";
-  }
+  if (!recipientName) recipientName = "User";
 
   try {
     const isStudent = senderRole === 'counsellor';
@@ -718,8 +678,8 @@ export async function sendChatNotificationEmail({
     const themeColor = isStudent ? '#0d9488' : '#7c3aed';
     const senderLabel = senderRole === 'counsellor' ? 'Your Counsellor' : 'Your Student';
 
-    const mailOptions = {
-      from: `"Educatia" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia" <${FROM_EMAIL}>`,
       to: recipientEmail,
       subject: `💬 New message from ${senderName} - Educatia`,
       html: `
@@ -768,11 +728,11 @@ export async function sendChatNotificationEmail({
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Chat notification sent to ${recipientEmail}:`, info.messageId);
-    return { success: true, messageId: info.messageId, sent: true };
+    if (error) throw error;
+    console.log(`✅ Chat notification sent to ${recipientEmail}:`, data.id);
+    return { success: true, messageId: data.id, sent: true };
   } catch (error) {
     console.error('❌ Chat notification email error:', error);
     return { error: error.message, sent: false };

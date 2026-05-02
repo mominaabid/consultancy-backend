@@ -1,12 +1,7 @@
-import nodemailer from "nodemailer";
+import { Resend } from 'resend';
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 
 export async function sendCounsellorPasswordSetupEmail({
   name,
@@ -16,8 +11,8 @@ export async function sendCounsellorPasswordSetupEmail({
   try {
     console.log("📧 Sending counsellor email to:", email);
 
-    const mailOptions = {
-      from: `"Educatia" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia" <${FROM_EMAIL}>`,
       to: email,
       subject: "Set up your Educatia counsellor account",
       html: `
@@ -41,12 +36,11 @@ export async function sendCounsellorPasswordSetupEmail({
           </p>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-
-    console.log("✅ Counsellor email sent:", info.messageId);
-    return info;
+    if (error) throw error;
+    console.log("✅ Counsellor email sent:", data.id);
+    return data;
   } catch (error) {
     console.error("❌ Counsellor email error:", error);
     throw error;
