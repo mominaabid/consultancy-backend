@@ -1,9 +1,11 @@
+import 'dotenv/config';
+console.log("🔥 ENV TEST:", process.env.ABLY_API_KEY);
 import express from "express";
 import http from "http";
-import { Server } from "socket.io";
+
 import cors from "cors";
 import { connectMongo } from "./src/config/mongo.js";
-import { initSocket } from "./src/sockets/chat.socket.js";
+
 import sequelize from "./src/config/db.js";
 import "./src/models/mysql/index.js";
 import routes from "./src/routes/index.js";
@@ -25,13 +27,7 @@ if (!fs.existsSync(uploadsDir)) {
 const app = express();
 const server = http.createServer(app);
 
-const io = new Server(server, {
-  cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
+
 
 app.use(
   cors({
@@ -43,7 +39,7 @@ app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/v1", routes);
 
-initSocket(io);
+
 
 const PORT = process.env.PORT || 3001;
 
