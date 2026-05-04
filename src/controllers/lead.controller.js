@@ -354,3 +354,85 @@ export async function deleteLead(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+// GET /admin/leads/:id/stage-notes
+export async function getStageNotes(req, res) {
+  try {
+    const leadId = req.params.id;
+    const stage = req.query.stage; // Optional stage filter
+    
+    // You'll need a new table 'stage_notes' or use existing logs
+    // For now, let's fetch from activity logs grouped by stage
+    const where = {
+      lead_id: leadId,
+      action_type: 'stage_note', // New action type
+    };
+    
+    if (stage) {
+      where.metadata = { stage }; // You'll need to store stage in metadata
+    }
+    
+    // Query your activity logs and group by stage
+    // This is simplified - you'll need to implement based on your DB schema
+    
+    res.json({}); // Placeholder
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// POST /admin/leads/:id/stage-notes
+export async function addStageNote(req, res) {
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) return res.status(404).json({ message: "Lead not found." });
+    
+    const { stage, note } = req.body;
+    
+    if (!stage || !note) {
+      return res.status(400).json({ message: "Stage and note are required." });
+    }
+    
+    // Log as a special note type with stage metadata
+    await logActivity({
+      leadId: lead.id,
+      actionType: "stage_note",
+      note: note,
+      metadata: JSON.stringify({ stage }), // Store which stage this note belongs to
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+    
+    res.json({ message: "Stage note added successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+export async function addNoteOnly(req, res) {
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) return res.status(404).json({ message: "Lead not found." });
+    
+    const userNote = req.body.note;
+    
+    if (!userNote || !userNote.trim()) {
+      return res.status(400).json({ message: "Note is required." });
+    }
+    
+    await logActivity({
+      leadId: lead.id,
+      actionType: "note_added",
+      note: userNote,
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+    
+    res.json({ message: "Note added successfully", lead });
+  } catch (error) {
+    console.error("❌ addNoteOnly error:", error);
+    res.status(500).json({ message: error.message });
+  }
+}
