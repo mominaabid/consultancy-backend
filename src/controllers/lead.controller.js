@@ -28,6 +28,21 @@ export async function createLead(req, res) {
       performedByName: req.user.name,
     });
 
+    // ✅ Send email if counsellor assigned
+    if (lead.counsellor_id) {
+      const counsellorUser = await User.findOne({
+        where: { id: lead.counsellor_id, role: "counsellor" },
+        attributes: ["id", "name", "email"],
+      });
+      if (counsellorUser && counsellorUser.email) {
+        sendLeadAssignmentEmail({
+          counsellorEmail: counsellorUser.email,
+          counsellorName: counsellorUser.name,
+          lead: lead.toJSON(),
+        }).catch((err) => console.error("Background email error:", err));
+      }
+    }
+
     res.status(201).json(lead);
   } catch (error) {
     console.error(error);
