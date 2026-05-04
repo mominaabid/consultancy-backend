@@ -2,7 +2,9 @@ import crypto from "crypto";
 import db from "../models/mysql/index.js";
 import { sendPasswordSetupEmail } from "../services/email.service.js";
 import { logActivity } from "../services/activityLog.service.js";
+import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js"; // ✅ NEW IMPORT
 import Conversation from "../models/mongo/Conversation.js";
+
 const { Lead, User, PasswordResetToken } = db;
 
 // ─── POST /admin/leads ────────────────────────────────────────────────────────
@@ -27,6 +29,21 @@ export async function createLead(req, res) {
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
+
+    // ✅ Send email if counsellor assigned
+    if (lead.counsellor_id) {
+      const counsellorUser = await User.findOne({
+        where: { id: lead.counsellor_id, role: "counsellor" },
+        attributes: ["id", "name", "email"],
+      });
+      if (counsellorUser && counsellorUser.email) {
+        sendLeadAssignmentEmail({
+          counsellorEmail: counsellorUser.email,
+          counsellorName: counsellorUser.name,
+          lead: lead.toJSON(),
+        }).catch((err) => console.error("Background email error:", err));
+      }
+    }
 
     res.status(201).json(lead);
   } catch (error) {
@@ -131,23 +148,41 @@ export async function assignCounsellor(req, res) {
       ? await User.findByPk(lead.counsellor_id, { attributes: ["name"] })
       : null;
 
-    const newCounsellor = req.body.counsellor_id
-      ? await User.findByPk(req.body.counsellor_id, { attributes: ["name"] })
+    const newCounsellorId = req.body.counsellor_id
+      ? Number(req.body.counsellor_id)
       : null;
 
-    lead.counsellor_id = req.body.counsellor_id || null;
+    lead.counsellor_id = newCounsellorId;
     await lead.save();
 
     await logActivity({
       leadId: lead.id,
       actionType: "counsellor_assigned",
       fromValue: prevCounsellor?.name || "Unassigned",
-      toValue: newCounsellor?.name || "Unassigned",
-      note: `Counsellor changed from "${prevCounsellor?.name || "Unassigned"}" to "${newCounsellor?.name || "Unassigned"}"`,
+      toValue: newCounsellorId
+        ? (await User.findByPk(newCounsellorId, { attributes: ["name"] }))
+            ?.name || "Assigned"
+        : "Unassigned",
+      note: `Counsellor changed from "${prevCounsellor?.name || "Unassigned"}" to "${newCounsellorId ? (await User.findByPk(newCounsellorId, { attributes: ["name"] }))?.name || "Assigned" : "Unassigned"}"`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
+
+    // ✅ Send email if a new counsellor is assigned (not null)
+    if (newCounsellorId !== null) {
+      const counsellorUser = await User.findOne({
+        where: { id: newCounsellorId, role: "counsellor" },
+        attributes: ["id", "name", "email"],
+      });
+      if (counsellorUser && counsellorUser.email) {
+        sendLeadAssignmentEmail({
+          counsellorEmail: counsellorUser.email,
+          counsellorName: counsellorUser.name,
+          lead: lead.toJSON(),
+        }).catch((err) => console.error("Background email error:", err));
+      }
+    }
 
     res.json(lead);
   } catch (error) {
