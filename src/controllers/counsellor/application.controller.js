@@ -241,9 +241,12 @@ export const updateApplication = async (req, res) => {
     }
 
     // Verify counsellor has access to this student's application
-    const student = await Lead.findOne({
-      where: { id: application.student_id, counsellor_id: req.user.id },
-    });
+  const student = await Lead.findOne({
+  where: { 
+    user_id: application.user_id,     // ← Correct
+    counsellor_id: req.user.id 
+  },
+});
 
     if (!student && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
@@ -283,9 +286,12 @@ export const deleteApplication = async (req, res) => {
     }
 
     // Verify counsellor has access
-    const student = await Lead.findOne({
-      where: { id: application.student_id, counsellor_id: req.user.id },
-    });
+const student = await Lead.findOne({
+  where: { 
+    user_id: application.user_id,     // ← Correct
+    counsellor_id: req.user.id 
+  },
+});
 
     if (!student && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
