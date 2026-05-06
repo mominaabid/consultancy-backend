@@ -1,70 +1,87 @@
-import Application from "../../models/mysql/Application.js";
-import User from "../../models/mysql/User.js";
+// src/controllers/counsellor/application.controller.js
+import db from '../../models/mysql/index.js';
+import { logActivity } from '../../services/activityLog.service.js';
 import { Op } from "sequelize";
 import sequelize from "../../config/db.js";
-import {
-  sendApplicationInquiryEmail,
-  sendApplicationEvaluationEmail,
-  sendApplicationSubmittedEmail,
-  sendOfferReceivedEmail,
-  sendOfferNotReceivedEmail,
-  sendVisaFiledEmail,
-  sendVisaApprovedEmail,
-  sendApplicationRejectedEmail,
-} from "../../services/email.service.js";
 import sseManager from '../../utils/sseManager.js';
 
+const { Application, Lead, User, Document } = db;
+
+// ─── GET STUDENTS WITH APPLICATIONS ─────────────────────────────────────────
+// src/controllers/counsellor/application.controller.js
 
 export const getStudentsWithApplications = async (req, res) => {
   try {
-    const students = await User.findAll({
-      where: {
-        role: "student",
-        is_deleted: false,
-        is_active: true,
+    const counsellorId = req.user?.id;
+
+    if (!counsellorId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    // Fetch Leads + their Applications
+    const leads = await Lead.findAll({
+      where: { 
+        counsellor_id: counsellorId,
+        is_deleted: false 
       },
-      attributes: ["id", "name", "email", "created_at"],
+      attributes: ['id', 'name', 'email', 'phone', 'created_at'],
       include: [
         {
           model: Application,
-          as: "applications",
+          as: 'applications',           // Make sure this association exists
           required: false,
-          order: [["created_at", "DESC"]],
-        },
+          where: {                      // Optional: only show non-deleted apps
+            // You can add soft delete later
+          },
+          include: [
+            {
+              model: Document,
+              as: 'documents',
+              required: false,
+              where: { is_deleted: false }
+            }
+          ],
+          order: [['created_at', 'DESC']]
+        }
       ],
+      order: [['created_at', 'DESC']]
     });
 
-    const formattedStudents = students.map((student) => ({
-      _id: student.id,
-      id: student.id,
-      name: student.name,
-      email: student.email,
-      applications:
-        student.applications?.map((app) => ({
-          _id: app.id,
-          id: app.id,
-          target_university: app.target_university,
-          course: app.course,
-          status: app.status,
-          created_at: app.created_at,
-          documents: [],
-        })) || [],
+    const formattedStudents = leads.map((lead) => ({
+      id: lead.id,
+      user_id: lead.id,
+      name: lead.name,
+      email: lead.email,
+      applications: lead.applications?.map((app) => ({
+        id: app.id,
+        target_university: app.target_university,
+        course: app.course,
+        status: app.status,
+        created_at: app.created_at,
+        student_id: lead.id,
+        student_name: lead.name,
+        student_email: lead.email,
+        full_name: app.full_name,
+        counselor_notes: app.counselor_notes,
+        documents: app.documents || [],
+      })) || [],
     }));
 
     res.json({
       success: true,
       students: formattedStudents,
     });
+
   } catch (err) {
-    console.error("Error fetching students applications:", err);
+    console.error("Error in getStudentsWithApplications:", err);
     res.status(500).json({
       success: false,
-      message: "Error fetching students applications",
+      message: "Error fetching students applications"
     });
   }
 };
 
-// Get specific student's applications
+// ─── GET STUDENT APPLICATIONS ───────────────────────────────────────────────
 export const getStudentApplications = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -74,7 +91,6 @@ export const getStudentApplications = async (req, res) => {
       order: [["created_at", "DESC"]],
     });
 
-    // Format applications to match frontend expected structure
     const formattedApplications = applications.map((app) => ({
       id: app.id,
       _id: app.id,
@@ -109,222 +125,204 @@ export const getStudentApplications = async (req, res) => {
   }
 };
 
-// Helper function to send status-specific emails
-async function sendStatusUpdateEmail(application, oldStatus, newStatus) {
-  const studentEmail = application.email;
-  const studentName = application.full_name || "Student";
-  const university = application.target_university || "the university";
-  const course = application.course || "your selected course";
-  const applicationId = application.id;
-
-  console.log(
-    `📧 Preparing to send email for status change: ${oldStatus} -> ${newStatus}`,
-  );
-
+// ─── GET ASSIGNED STUDENTS FOR COUNSELLOR ───────────────────────────────────
+export const getAssignedStudents = async (req, res) => {
   try {
-    switch (newStatus) {
-      case "inquiry":
-        await sendApplicationInquiryEmail({
-          name: studentName,
-          email: studentEmail,
-          university,
-          course,
-          applicationId,
-        });
-        break;
-
-      case "evaluation":
-        await sendApplicationEvaluationEmail({
-          name: studentName,
-          email: studentEmail,
-          university,
-          course,
-          applicationId,
-        });
-        break;
-
-      case "application submitted":
-        await sendApplicationSubmittedEmail({
-          name: studentName,
-          email: studentEmail,
-          university,
-          course,
-          applicationId,
-        });
-        break;
-
-      case "offer letter received":
-        await sendOfferReceivedEmail({
-          name: studentName,
-          email: studentEmail,
-          university,
-          course,
-          applicationId,
-        });
-        break;
-
-      case "offer letter not received":
-        await sendOfferNotReceivedEmail({
-          name: studentName,
-          email: studentEmail,
-          university,
-          course,
-          applicationId,
-          reason:
-            application.counselor_notes ||
-            "The university is still processing applications",
-        });
-        break;
-
-      case "visa filed":
-        await sendVisaFiledEmail({
-          name: studentName,
-          email: studentEmail,
-          university,
-          course,
-          applicationId,
-          visaCenter:
-            application.visa_center || "local visa application center",
-        });
-        break;
-
-      case "approved":
-        await sendVisaApprovedEmail({
-          name: studentName,
-          email: studentEmail,
-          university,
-          course,
-          applicationId,
-        });
-        break;
-
-      case "reject":
-        await sendApplicationRejectedEmail({
-          name: studentName,
-          email: studentEmail,
-          university,
-          course,
-          applicationId,
-          reason:
-            application.counselor_notes ||
-            "The application did not meet requirements",
-        });
-        break;
-
-      default:
-        console.log(`No email template defined for status: ${newStatus}`);
-        break;
-    }
-  } catch (emailError) {
-    console.error(`Failed to send ${newStatus} email:`, emailError);
-    // Don't throw - application update already succeeded
+    const students = await Lead.findAll({
+      where: { 
+        counsellor_id: req.user.id,
+        is_deleted: false 
+      },
+      attributes: ['id', 'name', 'email', 'phone', 'created_at'],
+    });
+    
+    res.json({
+      success: true,
+      students,
+    });
+  } catch (err) {
+    console.error("Error fetching assigned students:", err);
+    res.status(500).json({ message: "Error fetching assigned students" });
   }
-}
+};
 
-// Update application status (counsellor action)
-// export const updateApplicationStatusAsCounsellor = async (req, res) => {
-//   try {
-//     const { applicationId } = req.params;
-//     const { status, counsellor_notes } = req.body;
+// src/controllers/counsellor/application.controller.js
 
-//     // Validate status against new enum values
-//     const validStatuses = [
-//       "inquiry",
-//       "evaluation",
-//       "application submitted",
-//       "offer letter received",
-//       "offer letter not received",
-//       "visa filed",
-//       "approved",
-//       "reject",
-//     ];
+export const createApplication = async (req, res) => {
+  try {
+    const { 
+      user_id,           // This is Lead.id from frontend
+      target_university, 
+      course, 
+      target_country,
+      deadline,
+      status = "inquiry",
+      full_name,
+      email,
+      phone,
+      last_degree,
+      cgpa,
+      english_test,
+      test_score,
+      counselor_notes = "",
+    } = req.body;
 
-//     if (!validStatuses.includes(status)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-//       });
-//     }
+    if (!user_id || !target_university || !course) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Lead ID, University and Course are required' 
+      });
+    }
 
-//     const application = await Application.findByPk(applicationId);
+    // Find Lead
+    const lead = await Lead.findOne({
+      where: { 
+        id: user_id,
+        counsellor_id: req.user.id,
+        is_deleted: false 
+      },
+      attributes: ['id', 'name', 'email', 'phone']
+    });
 
-//     if (!application) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Application not found",
-//       });
-//     }
+    if (!lead) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Student lead not found or not assigned to you' 
+      });
+    }
 
-//     // Store old status for comparison
-//     const oldStatus = application.status;
+    // Create Application - Using Lead.id as user_id (temporary solution)
+    const application = await Application.create({
+      user_id: lead.id,                    // ← Using Lead ID here
+      full_name: full_name || lead.name,
+      email: email || lead.email,
+      phone: phone || lead.phone,
+      target_country,
+      target_university,
+      course,
+      last_degree,
+      cgpa,
+      english_test,
+      test_score,
+      counselor_notes,
+      status,
+      deadline,
+      counsellor_id: req.user.id,          // Optional: if you add this column later
+    });
 
-//     // Map status to corresponding date field
-//     const statusDateMap = {
-//       inquiry: "inquiry_date",
-//       evaluation: "evaluation_date",
-//       "application submitted": "application_submitted_date",
-//       "offer letter received": "offer_received_date",
-//       "offer letter not received": "offer_not_received_date",
-//       "visa filed": "visa_filed_date",
-//       approved: "approved_date",
-//       reject: "reject_date",
-//     };
+    console.log("✅ Application Created! ID:", application.id);
 
-//     // Prepare update data
-//     const updateData = {
-//       status: status,
-//       counselor_notes: counsellor_notes || application.counselor_notes,
-//     };
+    res.status(201).json({
+      success: true,
+      message: 'Application created successfully',
+      data: application,
+    });
 
-//     // Add timestamp if status has a corresponding date field
-//     if (statusDateMap[status]) {
-//       updateData[statusDateMap[status]] = new Date();
-//       console.log(`Setting ${statusDateMap[status]} to:`, new Date());
-//     }
+  } catch (err) {
+    console.error("❌ Create Application Error:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: err.name === 'SequelizeValidationError' 
+        ? err.errors[0].message 
+        : "Failed to create application" 
+    });
+  }
+};
 
-//     await application.update(updateData);
+// ─── UPDATE APPLICATION (COUNSELLOR) ────────────────────────────────────────
+export const updateApplication = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const application = await Application.findByPk(id);
 
-//     // ✅ SEND EMAIL NOTIFICATION (Don't await to avoid blocking response)
-//     if (oldStatus !== status && application.email) {
-//       // Fetch fresh application data with updated notes
-//       const updatedApplication = await Application.findByPk(applicationId);
-//       sendStatusUpdateEmail(updatedApplication, oldStatus, status).catch(
-//         (error) => {
-//           console.error("Email notification failed but status updated:", error);
-//         },
-//       );
-//     }
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
 
-//     res.json({
-//       success: true,
-//       message: `Application status updated to ${status}. A notification email has been sent to the student.`,
-//       application: application,
-//     });
-//   } catch (err) {
-//     console.error("Error updating application status:", err);
-//     res.status(500).json({
-//       success: false,
-//       message: "Error updating application status",
-//     });
-//   }
-// };
+    // Verify counsellor has access to this student's application
+    const student = await Lead.findOne({
+      where: { id: application.student_id, counsellor_id: req.user.id },
+    });
 
+    if (!student && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
+    await application.update(req.body);
+
+    await logActivity({
+      leadId: application.student_id,
+      actionType: 'application_updated',
+      note: `Application updated for ${application.target_university}`,
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+
+    res.json({
+      success: true,
+      message: 'Application updated successfully',
+      data: application,
+    });
+  } catch (err) {
+    console.error("Error updating application:", err);
+    res.status(500).json({ message: "Error updating application" });
+  }
+};
+
+// ─── DELETE APPLICATION (COUNSELLOR) ────────────────────────────────────────
+export const deleteApplication = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const application = await Application.findByPk(id);
+
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    // Verify counsellor has access
+    const student = await Lead.findOne({
+      where: { id: application.student_id, counsellor_id: req.user.id },
+    });
+
+    if (!student && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Soft delete related documents
+    await Document.update({ is_deleted: true }, { where: { application_id: id } });
+    await application.destroy();
+
+    await logActivity({
+      leadId: application.student_id,
+      actionType: 'application_deleted',
+      note: `Application deleted for ${application.target_university}`,
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+
+    res.json({
+      success: true,
+      message: 'Application deleted successfully',
+    });
+  } catch (err) {
+    console.error("Error deleting application:", err);
+    res.status(500).json({ message: "Error deleting application" });
+  }
+};
+
+// ─── UPDATE APPLICATION STATUS (COUNSELLOR) ─────────────────────────────────
 export const updateApplicationStatusAsCounsellor = async (req, res) => {
   try {
     const { applicationId } = req.params;
     const { status, counsellor_notes } = req.body;
 
-    // Validate status against new enum values
     const validStatuses = [
-      "inquiry",
-      "evaluation",
-      "application submitted",
-      "offer letter received",
-      "offer letter not received",
-      "visa filed",
-      "approved",
-      "reject",
+      "inquiry", "evaluation", "application submitted", "offer letter received",
+      "offer letter not received", "visa filed", "approved", "reject",
     ];
 
     if (!validStatuses.includes(status)) {
@@ -343,10 +341,8 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
       });
     }
 
-    // Store old status for comparison
     const oldStatus = application.status;
 
-    // Map status to corresponding date field
     const statusDateMap = {
       inquiry: "inquiry_date",
       evaluation: "evaluation_date",
@@ -358,26 +354,21 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
       reject: "reject_date",
     };
 
-    // Prepare update data
     const updateData = {
       status: status,
       counselor_notes: counsellor_notes || application.counselor_notes,
     };
 
-    // Add timestamp if status has a corresponding date field
     if (statusDateMap[status]) {
       updateData[statusDateMap[status]] = new Date();
-      console.log(`Setting ${statusDateMap[status]} to:`, new Date());
     }
 
     await application.update(updateData);
 
-    // Fetch user info for the student
     const student = await User.findByPk(application.user_id, {
       attributes: ['id', 'name', 'email']
     });
 
-    // ⭐ SEND SSE NOTIFICATION to the student ⭐
     const statusDisplayMap = {
       "inquiry": "Inquiry",
       "evaluation": "Evaluation",
@@ -391,37 +382,20 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
 
     const notificationMessage = `Your application for ${application.target_university || 'university'} (${application.course || 'course'}) status changed from "${statusDisplayMap[oldStatus] || oldStatus}" to "${statusDisplayMap[status] || status}".`;
 
-    // Send SSE event to the student
     if (student && student.id) {
       sseManager.sendToUser(student.id, {
         type: 'status_change',
         applicationId: application.id,
         oldStatus: oldStatus,
         newStatus: status,
-        oldStatusLabel: statusDisplayMap[oldStatus] || oldStatus,
-        newStatusLabel: statusDisplayMap[status] || status,
-        university: application.target_university,
-        course: application.course,
         message: notificationMessage,
         timestamp: new Date().toISOString()
       });
-      console.log(`SSE notification sent to student ${student.id} for status change`);
-    }
-
-    // ✅ SEND EMAIL NOTIFICATION (Don't await to avoid blocking response)
-    if (oldStatus !== status && application.email) {
-      // Fetch fresh application data with updated notes
-      const updatedApplication = await Application.findByPk(applicationId);
-      sendStatusUpdateEmail(updatedApplication, oldStatus, status).catch(
-        (error) => {
-          console.error("Email notification failed but status updated:", error);
-        },
-      );
     }
 
     res.json({
       success: true,
-      message: `Application status updated to ${status}. A notification email has been sent to the student.`,
+      message: `Application status updated to ${status}.`,
       application: application,
     });
   } catch (err) {
@@ -433,7 +407,7 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
   }
 };
 
-// Get application statistics for counsellor dashboard
+// ─── GET APPLICATION STATS ─────────────────────────────────────────────────
 export const getApplicationStats = async (req, res) => {
   try {
     const stats = await Application.findAll({

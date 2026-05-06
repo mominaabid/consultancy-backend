@@ -8,6 +8,7 @@ import {
   updateStage,
   updateLead,
   deleteLead,
+  addStageNote, getStageNotes ,addNoteOnly
 } from '../../controllers/lead.controller.js';
 import auth from '../../middleware/auth.middleware.js';
 import role from '../../middleware/role.middleware.js';
@@ -23,4 +24,7 @@ router.put('/:id/stage',     updateStage);
 router.put('/:id',           updateLead);
 router.delete('/:id',        deleteLead);
 router.get('/:id/logs', getLeadLogs);
+router.get("/:id/stage-notes", getStageNotes);
+router.post("/:id/stage-notes", addStageNote);
+router.put("/:id/note", addNoteOnly);
 export default router;

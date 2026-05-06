@@ -2,12 +2,12 @@ import crypto from "crypto";
 import db from "../models/mysql/index.js";
 import { sendPasswordSetupEmail } from "../services/email.service.js";
 import { logActivity } from "../services/activityLog.service.js";
-import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js"; // ✅ NEW IMPORT
 import Conversation from "../models/mongo/Conversation.js";
-
 const { Lead, User, PasswordResetToken } = db;
 
 // ─── POST /admin/leads ────────────────────────────────────────────────────────
+// src/controllers/admin/lead.controller.js
+
 export async function createLead(req, res) {
   try {
     // const data = {
@@ -22,7 +22,7 @@ export async function createLead(req, res) {
       ...req.body,
       counsellor_id:
         req.body.counsellor_id === "" || !req.body.counsellor_id
-          ? null
+          ? (req.user.role === 'counsellor' ? req.user.id : null)  // ← Auto-assign for counsellor
           : Number(req.body.counsellor_id),
     };
 
@@ -37,21 +37,6 @@ export async function createLead(req, res) {
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
-
-    // ✅ Send email if counsellor assigned
-    if (lead.counsellor_id) {
-      const counsellorUser = await User.findOne({
-        where: { id: lead.counsellor_id, role: "counsellor" },
-        attributes: ["id", "name", "email"],
-      });
-      if (counsellorUser && counsellorUser.email) {
-        sendLeadAssignmentEmail({
-          counsellorEmail: counsellorUser.email,
-          counsellorName: counsellorUser.name,
-          lead: lead.toJSON(),
-        }).catch((err) => console.error("Background email error:", err));
-      }
-    }
 
     res.status(201).json(lead);
   } catch (error) {
@@ -156,41 +141,23 @@ export async function assignCounsellor(req, res) {
       ? await User.findByPk(lead.counsellor_id, { attributes: ["name"] })
       : null;
 
-    const newCounsellorId = req.body.counsellor_id
-      ? Number(req.body.counsellor_id)
+    const newCounsellor = req.body.counsellor_id
+      ? await User.findByPk(req.body.counsellor_id, { attributes: ["name"] })
       : null;
 
-    lead.counsellor_id = newCounsellorId;
+    lead.counsellor_id = req.body.counsellor_id || null;
     await lead.save();
 
     await logActivity({
       leadId: lead.id,
       actionType: "counsellor_assigned",
       fromValue: prevCounsellor?.name || "Unassigned",
-      toValue: newCounsellorId
-        ? (await User.findByPk(newCounsellorId, { attributes: ["name"] }))
-            ?.name || "Assigned"
-        : "Unassigned",
-      note: `Counsellor changed from "${prevCounsellor?.name || "Unassigned"}" to "${newCounsellorId ? (await User.findByPk(newCounsellorId, { attributes: ["name"] }))?.name || "Assigned" : "Unassigned"}"`,
+      toValue: newCounsellor?.name || "Unassigned",
+      note: `Counsellor changed from "${prevCounsellor?.name || "Unassigned"}" to "${newCounsellor?.name || "Unassigned"}"`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
-
-    // ✅ Send email if a new counsellor is assigned (not null)
-    if (newCounsellorId !== null) {
-      const counsellorUser = await User.findOne({
-        where: { id: newCounsellorId, role: "counsellor" },
-        attributes: ["id", "name", "email"],
-      });
-      if (counsellorUser && counsellorUser.email) {
-        sendLeadAssignmentEmail({
-          counsellorEmail: counsellorUser.email,
-          counsellorName: counsellorUser.name,
-          lead: lead.toJSON(),
-        }).catch((err) => console.error("Background email error:", err));
-      }
-    }
 
     res.json(lead);
   } catch (error) {
@@ -424,6 +391,88 @@ export async function deleteLead(req, res) {
     res.json({ message: "Lead deleted successfully." });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+// GET /admin/leads/:id/stage-notes
+export async function getStageNotes(req, res) {
+  try {
+    const leadId = req.params.id;
+    const stage = req.query.stage; // Optional stage filter
+    
+    // You'll need a new table 'stage_notes' or use existing logs
+    // For now, let's fetch from activity logs grouped by stage
+    const where = {
+      lead_id: leadId,
+      action_type: 'stage_note', // New action type
+    };
+    
+    if (stage) {
+      where.metadata = { stage }; // You'll need to store stage in metadata
+    }
+    
+    // Query your activity logs and group by stage
+    // This is simplified - you'll need to implement based on your DB schema
+    
+    res.json({}); // Placeholder
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// POST /admin/leads/:id/stage-notes
+export async function addStageNote(req, res) {
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) return res.status(404).json({ message: "Lead not found." });
+    
+    const { stage, note } = req.body;
+    
+    if (!stage || !note) {
+      return res.status(400).json({ message: "Stage and note are required." });
+    }
+    
+    // Log as a special note type with stage metadata
+    await logActivity({
+      leadId: lead.id,
+      actionType: "stage_note",
+      note: note,
+      metadata: JSON.stringify({ stage }), // Store which stage this note belongs to
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+    
+    res.json({ message: "Stage note added successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+export async function addNoteOnly(req, res) {
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) return res.status(404).json({ message: "Lead not found." });
+    
+    const userNote = req.body.note;
+    
+    if (!userNote || !userNote.trim()) {
+      return res.status(400).json({ message: "Note is required." });
+    }
+    
+    await logActivity({
+      leadId: lead.id,
+      actionType: "note_added",
+      note: userNote,
+      performedBy: req.user.id,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+    
+    res.json({ message: "Note added successfully", lead });
+  } catch (error) {
+    console.error("❌ addNoteOnly error:", error);
     res.status(500).json({ message: error.message });
   }
 }

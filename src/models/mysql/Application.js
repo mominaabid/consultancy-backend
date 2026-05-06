@@ -60,6 +60,7 @@ const Application = sequelize.define(
     tableName: "applications",
     timestamps: true,
   },
+  
 );
  
 export default Application;

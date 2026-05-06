@@ -29,5 +29,11 @@ router.post(
   "/counsellor/setup-password",
   setupCounsellorPassword
 );
+router.get('/debug-token', auth, (req, res) => {
+  res.json({
+    user: req.user,
+    headers: req.headers.authorization
+  });
+});
 
 export default router;
