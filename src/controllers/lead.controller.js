@@ -10,6 +10,14 @@ const { Lead, User, PasswordResetToken } = db;
 // ─── POST /admin/leads ────────────────────────────────────────────────────────
 export async function createLead(req, res) {
   try {
+    // const data = {
+    //   ...req.body,
+    //   counsellor_id:
+    //     req.body.counsellor_id === "" || !req.body.counsellor_id
+    //       ? null
+    //       : Number(req.body.counsellor_id),
+    // };
+
     const data = {
       ...req.body,
       counsellor_id:
@@ -253,23 +261,58 @@ export async function updateStage(req, res) {
 
       let student;
 
+      // if (existingUser && existingUser.role === "student") {
+      //   // Student already exists — resend fresh link
+      //   console.log("👤 Student exists — resending link");
+      //   student = existingUser;
+      //   await PasswordResetToken.destroy({ where: { user_id: student.id } });
+
+      //   await logActivity({
+      //     leadId: lead.id,
+      //     actionType: "setup_email_resent",
+      //     note: `Setup email resent to ${lead.email}`,
+      //     performedBy: req.user.id,
+      //     performedByRole: req.user.role,
+      //     performedByName: req.user.name,
+      //   });
+      // } else {
+      //   // Create new student user
+      //   console.log("🆕 Creating new student account...");
+      //   student = await User.create({
+      //     name: lead.name,
+      //     email: lead.email,
+      //     password_hash: "PENDING_SETUP",
+      //     role: "student",
+      //     is_active: false,
+      //   });
+
+      //   lead.user_id = student.id;
+      //   await lead.save();
+
+      //   console.log("✅ Student created with id:", student.id);
+
+      //   await logActivity({
+      //     leadId: lead.id,
+      //     actionType: "student_account_created",
+      //     note: `Student portal account created for ${lead.email}`,
+      //     performedBy: req.user.id,
+      //     performedByRole: req.user.role,
+      //     performedByName: req.user.name,
+      //   });
+      // }
+
+      // ── Generate token + send email ──────────────────────────────────────
+
       if (existingUser && existingUser.role === "student") {
-        // Student already exists — resend fresh link
-        console.log("👤 Student exists — resending link");
         student = existingUser;
         await PasswordResetToken.destroy({ where: { user_id: student.id } });
 
-        await logActivity({
-          leadId: lead.id,
-          actionType: "setup_email_resent",
-          note: `Setup email resent to ${lead.email}`,
-          performedBy: req.user.id,
-          performedByRole: req.user.role,
-          performedByName: req.user.name,
-        });
+        // ✅ Link existing student to this lead if not already linked
+        if (lead.user_id !== student.id) {
+          lead.user_id = student.id;
+          await lead.save();
+        }
       } else {
-        // Create new student user
-        console.log("🆕 Creating new student account...");
         student = await User.create({
           name: lead.name,
           email: lead.email,
@@ -277,19 +320,14 @@ export async function updateStage(req, res) {
           role: "student",
           is_active: false,
         });
-        console.log("✅ Student created with id:", student.id);
 
-        await logActivity({
-          leadId: lead.id,
-          actionType: "student_account_created",
-          note: `Student portal account created for ${lead.email}`,
-          performedBy: req.user.id,
-          performedByRole: req.user.role,
-          performedByName: req.user.name,
-        });
+        // ✅ Link new student to this lead
+        lead.user_id = student.id;
+        await lead.save();
+
+        console.log("✅ Student created and linked with id:", student.id);
       }
 
-      // ── Generate token + send email ──────────────────────────────────────
       const token = crypto.randomBytes(32).toString("hex");
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24hrs
 

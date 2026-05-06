@@ -39,6 +39,7 @@ export async function createCounsellor(req, res) {
     });
 
     const counsellor = await Counsellor.create({
+      user_id: user.id,
       name,
       father_name,
       email,
@@ -91,9 +92,14 @@ export async function createCounsellor(req, res) {
 
 export async function getAllCounsellors(req, res) {
   try {
+    // const counsellors = await Counsellor.findAll({
+    //   where: { is_deleted: false },
+    //   order: [["id", "DESC"]],
+    // });
+
     const counsellors = await Counsellor.findAll({
-      where: { is_deleted: false },
-      order: [["id", "DESC"]],
+      where: { is_deleted: false, status: "active" },
+      include: [{ model: User, as: "user", attributes: ["id"] }], // assuming you add association
     });
     res.json(counsellors);
   } catch (error) {

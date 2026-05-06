@@ -10,6 +10,12 @@ export const Counsellor = sequelize.define(
       autoIncrement: true,
     },
 
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: { model: "users", key: "id" },
+    },
+
     name: {
       type: DataTypes.STRING,
       allowNull: false,

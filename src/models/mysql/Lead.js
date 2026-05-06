@@ -7,6 +7,16 @@ const Lead = sequelize.define('Lead', {
     primaryKey: true, 
     autoIncrement: true 
   },
+
+   user_id: {                    
+    type: DataTypes.INTEGER,
+    allowNull: true,             
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'SET NULL'
+  },
   name: DataTypes.STRING,
   email: DataTypes.STRING,
   phone: DataTypes.STRING,

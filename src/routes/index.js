@@ -11,29 +11,39 @@ import counsellorApplicationRoutes from "./counsellor/application.routes.js";
 import adminPaymentRoutes from "./admin/payment.routes.js";
 import adminApplicationRoutes from "./admin/application.routes.js";
 import studentPaymentRoutes from "./student/payment.routes.js";
-import sseRoutes from './sse.routes.js';
-
+import sseRoutes from "./sse.routes.js";
+import counsellorProfileRoutes from "./counsellor/counsellorProfile.routes.js";
+import studentProfileRoutes from "./student/studentProfile.routes.js";
+import adminProfileRoutes from "./admin/adminProfile.routes.js";
 
 const router = Router();
 
-// Public
+// --- 1. Public Routes ---
 router.use("/auth", authRoutes);
 router.use("/chat", chatRoutes);
+router.use("/sse", sseRoutes);
 
-// Student routes
+// --- 2. Specific Student Routes (Most specific paths first) ---
 router.use("/student/documents", studentDocumentRoutes);
-router.use("/", studentApplicationRoutes);
-router.use("/counsellor", counsellorApplicationRoutes);
 router.use("/student/payments", studentPaymentRoutes);
+// Move profile here - under /student, but before the root "/" catch-all
+router.use("/student", studentProfileRoutes);
 
-// Admin & Counsellor routes
+// --- 3. General Application Routes ---
+// This was likely shadowing your profile routes because it's mounted at "/"
+
+// --- 4. Admin & Counsellor routes ---
 router.use("/admin/leads", adminLeadRoutes);
+router.use("/admin/payments", adminPaymentRoutes);
 router.use("/admin", counsellorRoutes);
+router.use("/admin", adminApplicationRoutes);
+router.use("/admin", adminProfileRoutes);
+
 router.use("/counsellor/leads", adminLeadRoutes);
 router.use("/counsellor/documents", counsellorDocumentRoutes);
-router.use("/admin/payments", adminPaymentRoutes);
-router.use("/admin", adminApplicationRoutes);
-router.use('/sse', sseRoutes);
+router.use("/counsellor", counsellorApplicationRoutes);
+router.use("/counsellor", counsellorProfileRoutes);
 
+router.use("/", studentApplicationRoutes);
 
 export default router;
