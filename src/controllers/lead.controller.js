@@ -6,13 +6,15 @@ import Conversation from "../models/mongo/Conversation.js";
 const { Lead, User, PasswordResetToken } = db;
 
 // ─── POST /admin/leads ────────────────────────────────────────────────────────
+// src/controllers/admin/lead.controller.js
+
 export async function createLead(req, res) {
   try {
     const data = {
       ...req.body,
       counsellor_id:
         req.body.counsellor_id === "" || !req.body.counsellor_id
-          ? null
+          ? (req.user.role === 'counsellor' ? req.user.id : null)  // ← Auto-assign for counsellor
           : Number(req.body.counsellor_id),
     };
 
@@ -27,21 +29,6 @@ export async function createLead(req, res) {
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
-
-    // ✅ Send email if counsellor assigned
-    if (lead.counsellor_id) {
-      const counsellorUser = await User.findOne({
-        where: { id: lead.counsellor_id, role: "counsellor" },
-        attributes: ["id", "name", "email"],
-      });
-      if (counsellorUser && counsellorUser.email) {
-        sendLeadAssignmentEmail({
-          counsellorEmail: counsellorUser.email,
-          counsellorName: counsellorUser.name,
-          lead: lead.toJSON(),
-        }).catch((err) => console.error("Background email error:", err));
-      }
-    }
 
     res.status(201).json(lead);
   } catch (error) {

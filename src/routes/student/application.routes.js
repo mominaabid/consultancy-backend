@@ -1,32 +1,17 @@
+// src/routes/student/application.routes.js
 import { Router } from "express";
 import {
   getProfile,
-  addApplication,
   getApplications,
-  updateApplication,
-  updateApplicationStatus,
-  deleteApplication,
-  
+  getApplication,
 } from "../../controllers/student/application.controller.js";
 import auth from "../../middleware/auth.middleware.js";
-import { upload } from "../../middleware/upload.middleware.js";
 
 const router = Router();
 router.use(auth);
 
 router.get("/user/profile", getProfile);
 router.get("/getApplications", getApplications);
-router.post(
-  "/addApplication",
-  upload.single("profile_picture"),
-  addApplication,
-);
-router.put(
-  "/editApplication/:id",
-  upload.single("profile_picture"),
-  updateApplication,
-);
-router.put("/updateApplicationStatus/:id", updateApplicationStatus);
-router.delete("/deleteApplication/:id", deleteApplication);
+router.get("/getApplication/:id", getApplication);
 
 export default router;

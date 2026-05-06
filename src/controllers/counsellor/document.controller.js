@@ -1,15 +1,14 @@
 // src/controllers/counsellor/document.controller.js
 import db from '../../models/mysql/index.js';
-import { deleteFile } from '../../services/fileUpload.service.js';
+import { deleteFile, uploadFile } from '../../services/fileUpload.service.js';
 import { logActivity } from '../../services/activityLog.service.js';
 
-const { Document, Lead, User } = db;
+const { Document, Lead, User, Application } = db;
 
-// ─── GET /counsellor/documents/all ─────────────────────────────────────────
-// ─── GET /counsellor/documents/all ─────────────────────────────────────────
+// ─── GET ALL DOCUMENTS (Counsellor view) ───────────────────────────────────
 export async function getAllDocuments(req, res) {
   try {
-    const where = {};
+    const where = { is_deleted: false };
 
     if (req.user.role === 'counsellor') {
       const leads = await Lead.findAll({
@@ -17,215 +16,166 @@ export async function getAllDocuments(req, res) {
         attributes: ['id'],
       });
       const leadIds = leads.map(l => l.id);
-      where.student_id = leadIds;
+      where.student_id = { [db.Sequelize.Op.in]: leadIds };
     }
 
     const documents = await Document.findAll({
       where,
       include: [
-        {
-          model: Lead,
-          as: 'student',
-          attributes: ['id', 'name', 'email'],
-          required: false,
-        },
-        {
-          model: User,
-          as: 'reviewer',
-          attributes: ['id', 'name'],
-          required: false,
-        },
+        { model: Lead, as: 'student', attributes: ['id', 'name', 'email'] },
+        { model: Application, as: 'application', attributes: ['id', 'target_university', 'course'] },
+        { model: User, as: 'reviewer', attributes: ['id', 'name'] },
       ],
       order: [['uploaded_at', 'DESC']],
     });
 
-    // Format response for frontend with history included
-    const formattedDocs = documents.map(doc => ({
-      id: doc.id,
-      doc_type: doc.doc_type,
-      original_name: doc.file_path ? doc.file_path.split('/').pop() : 'document',
-      file_url: doc.file_path,
-      file_size: doc.file_size || 0,
-      file_mime: doc.file_mime || 'application/octet-stream',
-      status: doc.status,
-      rejection_reason: doc.rejection_reason,
-      submitted_at: doc.uploaded_at,
-      reviewed_at: doc.reviewed_at,
-      student_id: doc.student_id,
-      student_name: doc.student?.name || 'Unknown',
-      student_email: doc.student?.email,
-      reviewer_name: doc.reviewer?.name,
-      status_history: doc.status_history || [], // Include full history
-      review_count: doc.review_count || 0 // Include review count
-    }));
-
-    res.json(formattedDocs);
+    res.json(documents);   // Send full objects (frontend can format)
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
 }
 
-// ─── PUT /counsellor/documents/:id/verify ───────────────────────────────────
-// src/controllers/counsellor/document.controller.js
-
-// ─── PUT /counsellor/documents/:id/verify ───────────────────────────────────
+// ─── VERIFY DOCUMENT ───────────────────────────────────────────────────────
+// ─── VERIFY DOCUMENT ───────────────────────────────────────────────────────
 export async function verifyDocument(req, res) {
   try {
-    const document = await Document.findByPk(req.params.id, {
-      include: [{ model: Lead, as: 'student' }],
-    });
+    const document = await Document.findByPk(req.params.id);
 
-    if (!document) {
-      return res.status(404).json({ message: 'Document not found' });
+    if (!document) return res.status(404).json({ message: 'Document not found' });
+
+    const lead = await Lead.findByPk(document.student_id);
+
+    // TEMPORARY: Allow access even if counsellor_id is null (for existing bad data)
+    if (lead && lead.counsellor_id && lead.counsellor_id !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied - Student not assigned to you' });
     }
 
-    // Check if counsellor has access
-    if (req.user.role === 'counsellor') {
-      const lead = await Lead.findByPk(document.student_id);
-      if (!lead || lead.counsellor_id !== req.user.id) {
-        return res.status(403).json({ message: 'Access denied' });
-      }
-    }
-
-    const previousStatus = document.status;
-    
-    // Get existing history or initialize empty array
-    let history = document.status_history || [];
-    
-    // ADD the current state to history BEFORE changing
-    history.push({
-      id: Date.now(), // Unique ID for each history entry
-      status: previousStatus,
-      action: 'verified',
-      performed_by: req.user.id,
-      performed_by_name: req.user.name,
-      performed_by_role: req.user.role,
-      performed_at: new Date(),
-      note: `Document verified from "${previousStatus}" to "verified"`,
-      rejection_reason: document.rejection_reason || null,
-      file_path: document.file_path // Store file path to track changes
-    });
-
-    console.log('📝 Adding to history:', history[history.length - 1]); // Debug log
-    console.log('📚 Full history length:', history.length); // Debug log
-
-    // Update document with new status and history
     await document.update({
       status: 'verified',
       reviewed_by: req.user.id,
       reviewed_at: new Date(),
-      updated_at: new Date(),
-      status_history: history,
-      review_count: (document.review_count || 0) + 1
     });
 
-    // Log activity
-    await logActivity({
-      leadId: document.student_id,
-      actionType: 'document_verified',
-      fromValue: previousStatus,
-      toValue: 'verified',
-      note: `${document.doc_type} document verified`,
-      performedBy: req.user.id,
-      performedByRole: req.user.role,
-      performedByName: req.user.name,
-    });
-
-    // Return updated document with full history
-    const updatedDoc = {
-      ...document.toJSON(),
-      status_history: history,
-      review_count: (document.review_count || 0) + 1
-    };
-
-    res.json({ message: 'Document verified successfully', document: updatedDoc });
+    res.json({ success: true, message: 'Document verified successfully' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
 }
 
-// ─── PUT /counsellor/documents/:id/reject ───────────────────────────────────
+// ─── REJECT DOCUMENT ───────────────────────────────────────────────────────
 export async function rejectDocument(req, res) {
   try {
     const { reason } = req.body;
-
-    if (!reason || reason.trim().length === 0) {
-      return res.status(400).json({ message: 'Rejection reason is required' });
-    }
-
-    const document = await Document.findByPk(req.params.id, {
-      include: [{ model: Lead, as: 'student' }],
-    });
+    const document = await Document.findByPk(req.params.id);
 
     if (!document) {
       return res.status(404).json({ message: 'Document not found' });
     }
 
-    // Check if counsellor has access
-    if (req.user.role === 'counsellor') {
-      const lead = await Lead.findByPk(document.student_id);
-      if (!lead || lead.counsellor_id !== req.user.id) {
-        return res.status(403).json({ message: 'Access denied' });
-      }
+    const lead = await Lead.findByPk(document.student_id);
+
+    // TEMPORARY: Allow access even if counsellor_id is null (for existing bad data)
+    if (lead && lead.counsellor_id && lead.counsellor_id !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied - Student not assigned to you' });
     }
 
-    const previousStatus = document.status;
-    
-    // Get existing history or initialize empty array
-    let history = document.status_history || [];
-    
-    // ADD the current state to history BEFORE changing
-    history.push({
-      id: Date.now(), // Unique ID for each history entry
-      status: previousStatus,
-      action: 'rejected',
-      performed_by: req.user.id,
-      performed_by_name: req.user.name,
-      performed_by_role: req.user.role,
-      performed_at: new Date(),
-      note: `Document rejected. Reason: ${reason}`,
-      rejection_reason: reason,
-      file_path: document.file_path // Store file path to track changes
-    });
-
-    console.log('📝 Adding to history:', history[history.length - 1]); // Debug log
-    console.log('📚 Full history length:', history.length); // Debug log
-
-    // Update document with new status and history
     await document.update({
       status: 'rejected',
       rejection_reason: reason,
       reviewed_by: req.user.id,
       reviewed_at: new Date(),
-      updated_at: new Date(),
-      status_history: history,
-      review_count: (document.review_count || 0) + 1
     });
 
-    // Log activity
+    res.json({ success: true, message: 'Document rejected successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+
+// ─── UPLOAD FOR STUDENT (Counsellor sharing) ───────────────────────────────
+// ─── UPLOAD FOR STUDENT (Counsellor sharing) ───────────────────────────────
+export async function uploadForStudent(req, res) {
+  try {
+    const { student_email, application_id, doc_type, notes } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    if (!application_id) {
+      return res.status(400).json({ message: 'Application ID is required' });
+    }
+
+    // Find Lead (Student)
+    const lead = await Lead.findOne({
+      where: { 
+        email: student_email, 
+        counsellor_id: req.user.id, 
+        is_deleted: false 
+      }
+    });
+
+    if (!lead) {
+      return res.status(403).json({ message: 'Student not assigned to you' });
+    }
+
+    // Find Application - More flexible check
+    const application = await Application.findOne({
+      where: { 
+        id: application_id,
+        [db.Sequelize.Op.or]: [
+          { user_id: lead.id },           // Counsellor created apps
+          { email: student_email }
+        ]
+      }
+    });
+
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    // Upload File
+    const { fileUrl, fileKey, originalName } = await uploadFile(file, lead.id, doc_type);
+
+    // Create Document (Auto Verified for Counsellor)
+    const document = await Document.create({
+      student_id: lead.id,
+      application_id: parseInt(application_id),
+      doc_type: doc_type || 'other',
+      file_path: fileUrl,
+      original_name: originalName,
+      status: 'verified',                    // Auto-verified when counsellor uploads
+      uploaded_by: 'counsellor',
+      uploaded_by_id: req.user.id,
+      notes: notes || null,
+      uploaded_at: new Date(),
+    });
+
     await logActivity({
-      leadId: document.student_id,
-      actionType: 'document_rejected',
-      fromValue: previousStatus,
-      toValue: 'rejected',
-      note: `${document.doc_type} document rejected. Reason: ${reason}`,
+      leadId: lead.id,
+      actionType: 'document_shared',
+      note: `Counsellor uploaded ${doc_type} document`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
 
-    // Return updated document with full history
-    const updatedDoc = {
-      ...document.toJSON(),
-      status_history: history,
-      review_count: (document.review_count || 0) + 1
-    };
+    res.status(201).json({
+      success: true,
+      message: 'Document uploaded and shared successfully',
+      document,
+    });
 
-    res.json({ message: 'Document rejected successfully', document: updatedDoc });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
+    console.error('Counsellor Upload Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Failed to upload document' 
+    });
   }
 }

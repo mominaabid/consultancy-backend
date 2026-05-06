@@ -48,7 +48,17 @@ User.hasMany(Document, {
   as: 'reviewedDocuments', 
   foreignKey: 'reviewed_by' 
 });
+// After defining all models
 
+Lead.hasMany(Application, {
+  foreignKey: 'user_id',     // because we are storing lead.id in user_id
+  as: 'applications'
+});
+
+Application.belongsTo(Lead, {
+  foreignKey: 'user_id',
+  as: 'lead'
+});
 
 
 // ──────────────────────────────────────────
@@ -87,6 +97,22 @@ User.hasMany(Payment, {
 Lead.hasMany(Payment, { 
   as: 'leadPayments', 
   foreignKey: 'student_id' 
+});
+// src/models/mysql/index.js - Add these associations
+
+// Add these lines to your existing associations
+Document.belongsTo(Application, { 
+  as: 'application', 
+  foreignKey: 'application_id' 
+});
+Application.hasMany(Document, { 
+  as: 'documents', 
+  foreignKey: 'application_id' 
+});
+
+Document.belongsTo(User, {
+  as: 'uploader',
+  foreignKey: 'uploaded_by_id'
 });
 
 // ============================================
