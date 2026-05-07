@@ -90,22 +90,56 @@ export async function createCounsellor(req, res) {
   }
 }
 
-export async function getAllCounsellors(req, res) {
-  try {
-    // const counsellors = await Counsellor.findAll({
-    //   where: { is_deleted: false },
-    //   order: [["id", "DESC"]],
-    // });
+// export async function getAllCounsellors(req, res) {
+//   try {
+//     // const counsellors = await Counsellor.findAll({
+//     //   where: { is_deleted: false },
+//     //   order: [["id", "DESC"]],
+//     // });
 
-    const counsellors = await Counsellor.findAll({
-      where: { is_deleted: false, status: "active" },
-      include: [{ model: User, as: "user", attributes: ["id"] }], // assuming you add association
-    });
-    res.json(counsellors);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
+//     const counsellors = await Counsellor.findAll({
+//       where: { is_deleted: false, status: "active" },
+//       include: [{ model: User, as: "user", attributes: ["id"] }], // assuming you add association
+//     });
+//     res.json(counsellors);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: error.message });
+//   }
+// }
+
+// const counsellors = await Counsellor.findAll({
+//   where: { is_deleted: false, status: "active" },
+//   attributes: {
+//     include: [
+//       [
+//         db.sequelize.literal(`(
+//         SELECT COUNT(*) FROM leads
+//         WHERE leads.counsellor_id = Counsellor.user_id
+//       )`),
+//         "assigned_leads",
+//       ],
+//     ],
+//   },
+// });
+
+export async function getAllCounsellors(req, res) {
+  const counsellors = await Counsellor.findAll({
+    where: { is_deleted: false, status: "active" },
+    attributes: {
+      include: [
+        [
+          db.sequelize.literal(`(
+            SELECT COUNT(*) FROM leads 
+            WHERE leads.counsellor_id = Counsellor.user_id
+          )`),
+          "assigned_leads",
+        ],
+      ],
+    },
+    include: [{ model: User, as: "user", attributes: ["id"] }],
+  });
+  res.json(counsellors);
 }
 
 export async function updateCounsellor(req, res) {

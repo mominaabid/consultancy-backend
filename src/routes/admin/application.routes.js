@@ -7,6 +7,8 @@ import {
   getApplicationsByStatus,
   updateDocumentStatus,
   getApplicationDocuments,
+  createApplicationByAdmin,
+  getAllStudents
 } from "../../controllers/admin/application.controller.js";
 import auth from "../../middleware/auth.middleware.js";
 import role from "../../middleware/role.middleware.js";
@@ -19,6 +21,8 @@ router.use(role("admin"));
 
 // Admin application routes
 router.get("/applications", getAllApplications);
+router.get('/students', getAllStudents);
+router.post("/addApplications", createApplicationByAdmin);
 router.get("/applications/stats", getApplicationsStats);
 router.get("/applications/status/:status", getApplicationsByStatus);
 router.get("/applications/:id", getApplicationById);

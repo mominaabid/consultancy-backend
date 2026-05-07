@@ -1,6 +1,8 @@
 import Application from "../../models/mysql/Application.js";
+import Lead from "../../models/mysql/Lead.js";
 import Document from "../../models/mysql/Document.js";
 import { Sequelize } from "sequelize";
+import { Op } from "sequelize";
 
 // Progress mapping for new status enum
 const STATUS_PROGRESS = {
@@ -52,6 +54,171 @@ export const getAllApplications = async (req, res) => {
   } catch (err) {
     console.error("Error fetching all applications:", err);
     res.status(500).json({ message: "Error fetching applications" });
+  }
+};
+
+// Example: controllers/admin/user.controller.js
+export const getAllStudents = async (req, res) => {
+  try {
+    // Adjust attributes to match your actual users table columns
+    const students = await Lead.findAll({
+      where: {
+        status: {
+          [Op.in]: ["new", "contacted", "counseling"],
+        },
+      },
+      attributes: ["id", "name", "email", "phone"], // Use 'name' instead of first_name/last_name
+      order: [["name", "ASC"]], // Order by name
+    });
+
+    const formatted = students.map((s) => ({
+      id: s.id,
+      user_id: s.id,
+      name: s.name,
+      email: s.email,
+      phone: s.phone,
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching students" });
+  }
+};
+// Create new application by admin
+// Create new application by admin (FIXED)
+export const createApplicationByAdmin = async (req, res) => {
+  try {
+    const {
+      user_id, // <-- now used
+      first_name,
+      last_name,
+      email,
+      phone,
+      country,
+      nationality,
+      target_university,
+      course,
+      status,
+      dob,
+      gender,
+      cnic,
+      passport_number,
+      last_degree,
+      institute,
+      cgpa,
+      passing_year,
+      english_test,
+      test_score,
+      target_country,
+      counselor_notes,
+    } = req.body;
+
+    // Validate required fields
+    if (!user_id) {
+      return res.status(400).json({ message: "user_id is required" });
+    }
+    if (
+      (!first_name && !last_name) ||
+      !email ||
+      !target_university ||
+      !course
+    ) {
+      return res.status(400).json({
+        message:
+          "Missing required fields: first_name/last_name, email, target_university, course",
+      });
+    }
+
+    // Build full_name for the Application model
+    const full_name = `${first_name || ""} ${last_name || ""}`.trim();
+
+    const allowedStatuses = [
+      "inquiry",
+      "evaluation",
+      "application submitted",
+      "offer letter received",
+      "offer letter not received",
+      "visa filed",
+      "approved",
+      "reject",
+    ];
+    const finalStatus =
+      status && allowedStatuses.includes(status) ? status : "inquiry";
+
+    // Map status to date column for initial tracking
+    const statusDateMap = {
+      inquiry: "inquiry_date",
+      evaluation: "evaluation_date",
+      "application submitted": "application_submitted_date",
+      "offer letter received": "offer_received_date",
+      "offer letter not received": "offer_not_received_date",
+      "visa filed": "visa_filed_date",
+      approved: "approved_date",
+      reject: "reject_date",
+    };
+
+    const updateData = {
+      user_id, // <-- include the user_id
+      full_name,
+      first_name,
+      last_name,
+      email,
+      phone,
+      country,
+      nationality,
+      target_university,
+      course,
+      status: finalStatus,
+      dob,
+      gender,
+      cnic,
+      passport_number,
+      last_degree,
+      institute,
+      cgpa,
+      passing_year,
+      english_test,
+      test_score,
+      target_country,
+      counselor_notes,
+    };
+
+    // Set the appropriate date field for the initial status
+    if (statusDateMap[finalStatus]) {
+      updateData[statusDateMap[finalStatus]] = new Date();
+    }
+
+    const newApplication = await Application.create(updateData);
+
+    // Transform response
+    const responseData = {
+      id: newApplication.id,
+      application_id: newApplication.id.toString(),
+      student_name: newApplication.full_name,
+      first_name: newApplication.first_name,
+      last_name: newApplication.last_name,
+      email: newApplication.email,
+      phone: newApplication.phone,
+      country: newApplication.country,
+      nationality: newApplication.nationality,
+      target_university: newApplication.target_university,
+      course: newApplication.course,
+      status: newApplication.status,
+      progress: calculateProgress(newApplication),
+      created_at: newApplication.created_at,
+      updated_at: newApplication.updated_at,
+    };
+
+    res.status(201).json(responseData);
+  } catch (err) {
+    console.error("Error creating application:", err);
+    if (err.name === "SequelizeValidationError") {
+      return res
+        .status(400)
+        .json({ message: err.errors.map((e) => e.message).join(", ") });
+    }
+    res.status(500).json({ message: "Error creating application" });
   }
 };
 
