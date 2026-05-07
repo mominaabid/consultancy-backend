@@ -230,6 +230,7 @@ export const createApplication = async (req, res) => {
 };
 
 // ─── UPDATE APPLICATION (COUNSELLOR) ────────────────────────────────────────
+// ─── UPDATE APPLICATION (COUNSELLOR) ────────────────────────────────────────
 export const updateApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -240,22 +241,22 @@ export const updateApplication = async (req, res) => {
       return res.status(404).json({ message: 'Application not found' });
     }
 
-    // Verify counsellor has access to this student's application
-  const student = await Lead.findOne({
-  where: { 
-    user_id: application.user_id,     // ← Correct
-    counsellor_id: req.user.id 
-  },
-});
+    // Find the lead using user_id (since we store lead.id in user_id)
+    const lead = await Lead.findOne({
+      where: { 
+        id: application.user_id,           // This is the key fix
+        counsellor_id: req.user.id 
+      }
+    });
 
-    if (!student && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
+    if (!lead && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied - Application not yours' });
     }
 
     await application.update(req.body);
 
     await logActivity({
-      leadId: application.student_id,
+      leadId: lead?.id || application.user_id,
       actionType: 'application_updated',
       note: `Application updated for ${application.target_university}`,
       performedBy: req.user.id,
@@ -275,6 +276,7 @@ export const updateApplication = async (req, res) => {
 };
 
 // ─── DELETE APPLICATION (COUNSELLOR) ────────────────────────────────────────
+// ─── DELETE APPLICATION (COUNSELLOR) ────────────────────────────────────────
 export const deleteApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -285,24 +287,29 @@ export const deleteApplication = async (req, res) => {
       return res.status(404).json({ message: 'Application not found' });
     }
 
-    // Verify counsellor has access
-const student = await Lead.findOne({
-  where: { 
-    user_id: application.user_id,     // ← Correct
-    counsellor_id: req.user.id 
-  },
-});
+    // Check ownership
+    const lead = await Lead.findOne({
+      where: { 
+        id: application.user_id,
+        counsellor_id: req.user.id 
+      }
+    });
 
-    if (!student && req.user.role !== 'admin') {
+    if (!lead && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Soft delete related documents
-    await Document.update({ is_deleted: true }, { where: { application_id: id } });
+    // First soft delete all related documents
+    await Document.update(
+      { is_deleted: true }, 
+      { where: { application_id: id } }
+    );
+
+    // Then delete the application
     await application.destroy();
 
     await logActivity({
-      leadId: application.student_id,
+      leadId: lead?.id || application.user_id,
       actionType: 'application_deleted',
       note: `Application deleted for ${application.target_university}`,
       performedBy: req.user.id,
@@ -312,11 +319,21 @@ const student = await Lead.findOne({
 
     res.json({
       success: true,
-      message: 'Application deleted successfully',
+      message: 'Application and related documents deleted successfully',
     });
   } catch (err) {
     console.error("Error deleting application:", err);
-    res.status(500).json({ message: "Error deleting application" });
+    
+    if (err.name === 'SequelizeForeignKeyConstraintError' || err.original?.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(400).json({
+        message: "Cannot delete application because it has linked documents. Please try again."
+      });
+    }
+
+    res.status(500).json({ 
+      message: "Error deleting application",
+      error: err.message 
+    });
   }
 };
 
