@@ -8,6 +8,44 @@ import Conversation from "../models/mongo/Conversation.js";
 const { Lead, User, PasswordResetToken } = db;
 
 // ─── POST /admin/leads ────────────────────────────────────────────────────────
+// src/controllers/admin/lead.controller.js
+
+// export async function createLead(req, res) {
+//   try {
+//     // const data = {
+//     //   ...req.body,
+//     //   counsellor_id:
+//     //     req.body.counsellor_id === "" || !req.body.counsellor_id
+//     //       ? null
+//     //       : Number(req.body.counsellor_id),
+//     // };
+
+//     const data = {
+//       ...req.body,
+//       counsellor_id:
+//         req.body.counsellor_id === "" || !req.body.counsellor_id
+//           ? (req.user.role === 'counsellor' ? req.user.id : null)  // ← Auto-assign for counsellor
+//           : Number(req.body.counsellor_id),
+//     };
+
+//     const lead = await Lead.create(data);
+
+//     await logActivity({
+//       leadId: lead.id,
+//       actionType: "lead_created",
+//       toValue: lead.status,
+//       note: `Lead created via ${lead.source || "unknown"} · Phone: ${lead.phone || "—"} · Country: ${lead.preferred_country || "—"}`,
+//       performedBy: req.user.id,
+//       performedByRole: req.user.role,
+//       performedByName: req.user.name,
+//     });
+
+//     res.status(201).json(lead);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: error.message });
+//   }
+// }
 export async function createLead(req, res) {
   try {
     const data = {

@@ -148,87 +148,95 @@ export const getAssignedStudents = async (req, res) => {
 
 // src/controllers/counsellor/application.controller.js
 
+// src/controllers/counsellor/application.controller.js
+
+// src/controllers/counsellor/application.controller.js
+
 export const createApplication = async (req, res) => {
   try {
-    const { 
-      user_id,           // This is Lead.id from frontend
-      target_university, 
-      course, 
-      target_country,
-      deadline,
-      status = "inquiry",
-      full_name,
-      email,
-      phone,
-      last_degree,
-      cgpa,
-      english_test,
-      test_score,
-      counselor_notes = "",
-    } = req.body;
+    const { user_id, ...applicationData } = req.body;
+    const counsellorId = req.user?.id;
 
-    if (!user_id || !target_university || !course) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Lead ID, University and Course are required' 
-      });
+    if (!user_id) {
+      return res.status(400).json({ success: false, message: "user_id is required" });
     }
 
-    // Find Lead
+    if (!counsellorId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    // ✅ Updated: Allow "new", "contacted", "counselling" and similar active statuses
+    const allowedLeadStatuses = ['new', 'contacted', 'counselling', 'inquiry', 'follow_up'];
+
     const lead = await Lead.findOne({
-      where: { 
+      where: {
         id: user_id,
-        counsellor_id: req.user.id,
-        is_deleted: false 
+        counsellor_id: counsellorId,
+        is_deleted: false,
+        // status: { [Op.in]: allowedLeadStatuses }   // Uncomment if you want strict check
       },
-      attributes: ['id', 'name', 'email', 'phone']
+      attributes: ['id', 'name', 'email', 'phone', 'status', 'user_id'],
     });
 
     if (!lead) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Student lead not found or not assigned to you' 
+        message: "Student not found or not assigned to you. Only New/Contacted/Counselling leads are allowed." 
       });
     }
 
-    // Create Application - Using Lead.id as user_id (temporary solution)
+    // Optional: Log if lead status is not ideal
+    if (!allowedLeadStatuses.includes(lead.status)) {
+      console.log(`⚠️ Creating application for lead with status: ${lead.status}`);
+    }
+
+    // Create Application
     const application = await Application.create({
-      user_id: lead.id,                    // ← Using Lead ID here
-      full_name: full_name || lead.name,
-      email: email || lead.email,
-      phone: phone || lead.phone,
-      target_country,
-      target_university,
-      course,
-      last_degree,
-      cgpa,
-      english_test,
-      test_score,
-      counselor_notes,
-      status,
-      deadline,
-      counsellor_id: req.user.id,          // Optional: if you add this column later
+      user_id: lead.id,           // Important: Using Lead.id
+      full_name: applicationData.full_name || lead.name,
+      email: applicationData.email || lead.email,
+      phone: applicationData.phone || lead.phone,
+      target_university: applicationData.target_university,
+      course: applicationData.course,
+      target_country: applicationData.target_country,
+      deadline: applicationData.deadline,
+      status: applicationData.status || "inquiry",
+      last_degree: applicationData.last_degree,
+      cgpa: applicationData.cgpa,
+      english_test: applicationData.english_test,
+      test_score: applicationData.test_score,
+      counselor_notes: applicationData.counselor_notes,
     });
 
-    console.log("✅ Application Created! ID:", application.id);
+    // Log Activity
+    await logActivity({
+      leadId: lead.id,
+      actionType: "application_created",
+      note: `Application created for ${lead.name} → ${applicationData.target_university || '—'} (${applicationData.course || '—'})`,
+      performedBy: counsellorId,
+      performedByRole: req.user.role,
+      performedByName: req.user.name,
+    });
+
+    // Optional: Send SSE notification
+    // sseManager.sendToUser(lead.id, 'application_created', application);
 
     res.status(201).json({
       success: true,
-      message: 'Application created successfully',
-      data: application,
+      message: "Application created successfully",
+      application
     });
 
-  } catch (err) {
-    console.error("❌ Create Application Error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: err.name === 'SequelizeValidationError' 
-        ? err.errors[0].message 
-        : "Failed to create application" 
+  } catch (error) {
+    console.error("❌ Error creating application:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to create application"
     });
   }
 };
 
+// ─── UPDATE APPLICATION (COUNSELLOR) ────────────────────────────────────────
 // ─── UPDATE APPLICATION (COUNSELLOR) ────────────────────────────────────────
 export const updateApplication = async (req, res) => {
   try {
@@ -240,19 +248,22 @@ export const updateApplication = async (req, res) => {
       return res.status(404).json({ message: 'Application not found' });
     }
 
-    // Verify counsellor has access to this student's application
-    const student = await Lead.findOne({
-      where: { id: application.student_id, counsellor_id: req.user.id },
+    // Find the lead using user_id (since we store lead.id in user_id)
+    const lead = await Lead.findOne({
+      where: { 
+        id: application.user_id,           // This is the key fix
+        counsellor_id: req.user.id 
+      }
     });
 
-    if (!student && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
+    if (!lead && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied - Application not yours' });
     }
 
     await application.update(req.body);
 
     await logActivity({
-      leadId: application.student_id,
+      leadId: lead?.id || application.user_id,
       actionType: 'application_updated',
       note: `Application updated for ${application.target_university}`,
       performedBy: req.user.id,
@@ -272,6 +283,7 @@ export const updateApplication = async (req, res) => {
 };
 
 // ─── DELETE APPLICATION (COUNSELLOR) ────────────────────────────────────────
+// ─── DELETE APPLICATION (COUNSELLOR) ────────────────────────────────────────
 export const deleteApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -282,21 +294,29 @@ export const deleteApplication = async (req, res) => {
       return res.status(404).json({ message: 'Application not found' });
     }
 
-    // Verify counsellor has access
-    const student = await Lead.findOne({
-      where: { id: application.student_id, counsellor_id: req.user.id },
+    // Check ownership
+    const lead = await Lead.findOne({
+      where: { 
+        id: application.user_id,
+        counsellor_id: req.user.id 
+      }
     });
 
-    if (!student && req.user.role !== 'admin') {
+    if (!lead && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Soft delete related documents
-    await Document.update({ is_deleted: true }, { where: { application_id: id } });
+    // First soft delete all related documents
+    await Document.update(
+      { is_deleted: true }, 
+      { where: { application_id: id } }
+    );
+
+    // Then delete the application
     await application.destroy();
 
     await logActivity({
-      leadId: application.student_id,
+      leadId: lead?.id || application.user_id,
       actionType: 'application_deleted',
       note: `Application deleted for ${application.target_university}`,
       performedBy: req.user.id,
@@ -306,11 +326,21 @@ export const deleteApplication = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Application deleted successfully',
+      message: 'Application and related documents deleted successfully',
     });
   } catch (err) {
     console.error("Error deleting application:", err);
-    res.status(500).json({ message: "Error deleting application" });
+    
+    if (err.name === 'SequelizeForeignKeyConstraintError' || err.original?.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(400).json({
+        message: "Cannot delete application because it has linked documents. Please try again."
+      });
+    }
+
+    res.status(500).json({ 
+      message: "Error deleting application",
+      error: err.message 
+    });
   }
 };
 
