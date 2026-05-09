@@ -72,14 +72,14 @@ export async function sendApplicationInquiryEmail({
             <div style="background: #f0fdf4; border-left: 4px solid #0d9488; padding: 20px; border-radius: 12px; margin: 25px 0;">
               <h3 style="color: #0d9488; margin: 0 0 15px 0;">📋 Application Details</h3>
               <table style="width: 100%;">
-                <tr><td style="padding: 8px 0;"><strong>Application ID:</strong>NonNull<td>#${applicationId}NonNull</tr>
-                <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>🏛️ ${university}NonNull</td>
-                <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>📚 ${course}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>Application ID:</strong><td>#${applicationId}</tr>
+                <tr><td style="padding: 8px 0;"><strong>University:</strong><td>🏛️ ${university}</td>
+                <tr><td style="padding: 8px 0;"><strong>Course:</strong><td>📚 ${course}</tr>
               </table>
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${process.env.FRONTEND_URL}/student/applications" 
+              <a href="${process.env.FRONTEND_URL}/student/application" 
                  style="display: inline-block; background: #0d9488; color: white; padding: 12px 32px; 
                         border-radius: 8px; text-decoration: none; font-weight: bold;">
                 🔗 Track Your Application
@@ -188,9 +188,9 @@ export async function sendApplicationSubmittedEmail({
             <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 20px; border-radius: 12px; margin: 25px 0;">
               <h3 style="color: #2563eb; margin: 0 0 15px 0;">📋 Submission Details</h3>
               <table style="width: 100%;">
-                <tr><td style="padding: 8px 0;"><strong>Application ID:</strong>NonNull<td>#${applicationId}NonNull</tr>
-                <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>🏛️ ${university}NonNull</tr>
-                <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>📚 ${course}NonNull</tr>
+                <tr><td style="padding: 8px 0;"><strong>Application ID:</strong><td>#${applicationId}</tr>
+                <tr><td style="padding: 8px 0;"><strong>University:</strong><td>🏛️ ${university}</tr>
+                <tr><td style="padding: 8px 0;"><strong>Course:</strong><td>📚 ${course}</tr>
               </table>
             </div>
             
@@ -381,9 +381,9 @@ export async function sendVisaFiledEmail({
             <div style="background: #f5f3ff; border-left: 4px solid #8b5cf6; padding: 20px; border-radius: 12px; margin: 25px 0;">
               <h3 style="color: #7c3aed; margin: 0 0 15px 0;">📋 Visa Details</h3>
               <table style="width: 100%;">
-                <tr><td style="padding: 8px 0;"><strong>University:</strong>NonNull<td>${university}NonNull</tr>
-                <tr><td style="padding: 8px 0;"><strong>Course:</strong>NonNull<td>${course}NonNull</td>
-                <tr><td style="padding: 8px 0;"><strong>Visa Center:</strong>NonNull<td>🏢 ${visaCenter || "Your local visa application center"}NonNull</td>
+                <tr><td style="padding: 8px 0;"><strong>University:</strong><td>${university}</tr>
+                <tr><td style="padding: 8px 0;"><strong>Course:</strong><td>${course}</td>
+                <tr><td style="padding: 8px 0;"><strong>Visa Center:</strong><td>🏢 ${visaCenter || "Your local visa application center"}</td>
               </table>
             </div>
             
@@ -601,10 +601,10 @@ export async function sendApplicationConfirmationEmail({
               <h3 style="color: #0d9488; margin: 0 0 15px 0; font-size: 18px;">📋 Application Details</h3>
               
               <table style="width: 100%; border-collapse: collapse;">
-                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px; width: 120px;"><strong>Application ID:</strong>NonNull<td style="padding: 8px 0; color: #1f2937; font-size: 14px;">#${applicationId}NonNull</tr>
-                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>University:</strong>NonNull<td style="padding: 8px 0; color: #1f2937; font-size: 14px;">🏛️ ${university}NonNull</tr>
-                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Course:</strong>NonNull<td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📚 ${course}NonNull</tr>
-                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Submission Date:</strong>NonNull<td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📅 ${currentDate}</td></tr>
+                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px; width: 120px;"><strong>Application ID:</strong><td style="padding: 8px 0; color: #1f2937; font-size: 14px;">#${applicationId}</tr>
+                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>University:</strong><td style="padding: 8px 0; color: #1f2937; font-size: 14px;">🏛️ ${university}</tr>
+                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Course:</strong><td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📚 ${course}</tr>
+                <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;"><strong>Submission Date:</strong><td style="padding: 8px 0; color: #1f2937; font-size: 14px;">📅 ${currentDate}</td></tr>
               </table>
             </div>
             
