@@ -228,131 +228,62 @@ export async function assignCounsellor(req, res) {
 }
 
 // ─── PUT /admin/leads/:id/stage ───────────────────────────────────────────────
+// PUT /admin/leads/:id/stage
+// PUT /admin/leads/:id/stage
 export async function updateStage(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
-    if (!lead) return res.status(404).json({ message: "Lead not found." });
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
 
-    const previousStatus = lead.status;
-    const newStatus = req.body.status;
-    const userNote = req.body.note || null;
+    const { status, note } = req.body;
+    const oldStatus = lead.status;
 
-    lead.status = newStatus;
-    await lead.save();
+    if (!status) return res.status(400).json({ message: "Status is required" });
 
+    // Update lead status
+    await lead.update({ status });
+
+    // Log Stage Change
     await logActivity({
       leadId: lead.id,
       actionType: "stage_changed",
-      fromValue: previousStatus,
-      toValue: newStatus,
-      note: userNote
-        ? userNote
-        : `Stage moved from "${previousStatus}" to "${newStatus}"`,
+      from_value: oldStatus,
+      to_value: status,
+      note: `Moved from ${oldStatus} to ${status}`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
 
-    if (userNote) {
+    // If note was provided, save it against the OLD (previous) stage
+    if (note && note.trim()) {
+      // Map status key to label manually (since STAGES is not imported)
+      const stageLabels = {
+        new: "New",
+        contacted: "Contacted",
+        counseling: "Counseling",
+        visa_filed: "Visa Filed",
+        visa_approved: "Visa Approved",
+        success: "Success",
+        rejected: "Rejected",
+        // Add more stages as needed
+      };
+
+      const oldStageLabel = stageLabels[oldStatus] || oldStatus;
+
       await logActivity({
         leadId: lead.id,
         actionType: "note_added",
-        note: userNote,
+        note: `[${oldStageLabel}] ${note}`,
         performedBy: req.user.id,
         performedByRole: req.user.role,
         performedByName: req.user.name,
       });
     }
 
-    // 🎯 COUNSELING FLOW (UNCHANGED - BEST VERSION)
-    const isMovingToCounseling =
-      newStatus === "counseling" && previousStatus !== "counseling";
-
-    if (isMovingToCounseling && lead.email) {
-      const existingUser = await User.findOne({
-        where: { email: lead.email },
-      });
-
-      if (existingUser && existingUser.role !== "student") {
-        return res.json(lead);
-      }
-
-      let student;
-
-      if (existingUser && existingUser.role === "student") {
-        student = existingUser;
-        await PasswordResetToken.destroy({
-          where: { user_id: student.id },
-        });
-
-        if (lead.user_id !== student.id) {
-          lead.user_id = student.id;
-          await lead.save();
-        }
-      } else {
-        student = await User.create({
-          name: lead.name,
-          email: lead.email,
-          password_hash: "PENDING_SETUP",
-          role: "student",
-          is_active: false,
-        });
-
-        lead.user_id = student.id;
-        await lead.save();
-      }
-
-      const token = crypto.randomBytes(32).toString("hex");
-
-      await PasswordResetToken.create({
-        user_id: student.id,
-        token,
-        expires_at: new Date(Date.now() + 86400000),
-      });
-
-      const setupLink = `${process.env.FRONTEND_URL}/setup-password?token=${token}`;
-
-      await sendPasswordSetupEmail({
-        name: lead.name,
-        email: lead.email,
-        setupLink,
-      });
-
-      await logActivity({
-        leadId: lead.id,
-        actionType: "setup_email_sent",
-        note: `Password setup email sent to ${lead.email}`,
-        performedBy: req.user.id,
-        performedByRole: req.user.role,
-        performedByName: req.user.name,
-      });
-
-      // 💬 Conversation
-      if (lead.counsellor_id) {
-        const counsellor = await User.findByPk(lead.counsellor_id, {
-          attributes: ["name"],
-        });
-
-        const exists = await Conversation.findOne({
-          student_id: student.id,
-          counsellor_id: lead.counsellor_id,
-        });
-
-        if (!exists) {
-          await Conversation.create({
-            student_id: student.id,
-            counsellor_id: lead.counsellor_id,
-            student_name: lead.name,
-            counsellor_name: counsellor?.name || "Counsellor",
-            last_message: "",
-          });
-        }
-      }
-    }
-
-    res.json(lead);
+    res.json({ message: "Stage updated successfully", lead });
   } catch (error) {
-    console.error(error);
+    console.error("Stage update error:", error);
     res.status(500).json({ message: error.message });
   }
 }
