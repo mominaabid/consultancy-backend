@@ -1,50 +1,43 @@
 // src/controllers/counsellor/application.controller.js
-import db from '../../models/mysql/index.js';
-import { logActivity } from '../../services/activityLog.service.js';
+import db from "../../models/mysql/index.js";
+import { logActivity } from "../../services/activityLog.service.js";
 import { Op } from "sequelize";
 import sequelize from "../../config/db.js";
-import sseManager from '../../utils/sseManager.js';
+import sseManager from "../../utils/sseManager.js";
 
 const { Application, Lead, User, Document } = db;
 
-// ─── GET STUDENTS WITH APPLICATIONS ─────────────────────────────────────────
-// src/controllers/counsellor/application.controller.js
-
+// ─── GET STUDENTS WITH APPLICATIONS (admin gets ALL leads) ─────────────────
 export const getStudentsWithApplications = async (req, res) => {
   try {
-    const counsellorId = req.user?.id;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    const isAdmin = userRole === "admin";
 
-    if (!counsellorId) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+    let leadWhere = { is_deleted: false };
+    if (!isAdmin) {
+      leadWhere.counsellor_id = userId;
     }
 
-    // Fetch Leads + their Applications
     const leads = await Lead.findAll({
-      where: { 
-        counsellor_id: counsellorId,
-        is_deleted: false 
-      },
-      attributes: ['id', 'name', 'email', 'phone', 'created_at'],
+      where: leadWhere,
+      attributes: ["id", "name", "email", "phone", "status", "created_at"],
       include: [
         {
           model: Application,
-          as: 'applications',           // Make sure this association exists
+          as: "applications",
           required: false,
-          where: {                      // Optional: only show non-deleted apps
-            // You can add soft delete later
-          },
           include: [
             {
               model: Document,
-              as: 'documents',
+              as: "documents",
               required: false,
-              where: { is_deleted: false }
-            }
+              where: { is_deleted: false },
+            },
           ],
-          order: [['created_at', 'DESC']]
-        }
+        },
       ],
-      order: [['created_at', 'DESC']]
+      order: [["created_at", "DESC"]],
     });
 
     const formattedStudents = leads.map((lead) => ({
@@ -52,36 +45,33 @@ export const getStudentsWithApplications = async (req, res) => {
       user_id: lead.id,
       name: lead.name,
       email: lead.email,
-      applications: lead.applications?.map((app) => ({
-        id: app.id,
-        target_university: app.target_university,
-        course: app.course,
-        status: app.status,
-        created_at: app.created_at,
-        student_id: lead.id,
-        student_name: lead.name,
-        student_email: lead.email,
-        full_name: app.full_name,
-        counselor_notes: app.counselor_notes,
-        documents: app.documents || [],
-      })) || [],
+      status: lead.status,
+      applications:
+        lead.applications?.map((app) => ({
+          id: app.id,
+          target_university: app.target_university,
+          course: app.course,
+          status: app.status,
+          created_at: app.created_at,
+          student_id: lead.id,
+          student_name: lead.name,
+          student_email: lead.email,
+          full_name: app.full_name,
+          counselor_notes: app.counselor_notes,
+          documents: app.documents || [],
+        })) || [],
     }));
 
-    res.json({
-      success: true,
-      students: formattedStudents,
-    });
-
+    res.json({ success: true, students: formattedStudents });
   } catch (err) {
     console.error("Error in getStudentsWithApplications:", err);
     res.status(500).json({
       success: false,
-      message: "Error fetching students applications"
+      message: "Error fetching students applications",
     });
   }
 };
 
-// ─── GET STUDENT APPLICATIONS ───────────────────────────────────────────────
 export const getStudentApplications = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -125,17 +115,16 @@ export const getStudentApplications = async (req, res) => {
   }
 };
 
-// ─── GET ASSIGNED STUDENTS FOR COUNSELLOR ───────────────────────────────────
 export const getAssignedStudents = async (req, res) => {
   try {
     const students = await Lead.findAll({
-      where: { 
+      where: {
         counsellor_id: req.user.id,
-        is_deleted: false 
+        is_deleted: false,
       },
-      attributes: ['id', 'name', 'email', 'phone', 'created_at'],
+      attributes: ["id", "name", "email", "phone", "created_at"],
     });
-    
+
     res.json({
       success: true,
       students,
@@ -146,53 +135,50 @@ export const getAssignedStudents = async (req, res) => {
   }
 };
 
-// src/controllers/counsellor/application.controller.js
-
-// src/controllers/counsellor/application.controller.js
-
-// src/controllers/counsellor/application.controller.js
-
+// ─── CREATE APPLICATION (admin can create for ANY lead) ─────────────────────
 export const createApplication = async (req, res) => {
   try {
     const { user_id, ...applicationData } = req.body;
     const counsellorId = req.user?.id;
+    const isAdmin = req.user?.role === "admin";
 
     if (!user_id) {
-      return res.status(400).json({ success: false, message: "user_id is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "user_id is required" });
     }
 
-    if (!counsellorId) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-    }
-
-    // ✅ Updated: Allow "new", "contacted", "counselling" and similar active statuses
-    const allowedLeadStatuses = ['new', 'contacted', 'counselling', 'inquiry', 'follow_up'];
-
+    // Find the lead (student)
     const lead = await Lead.findOne({
-      where: {
-        id: user_id,
-        counsellor_id: counsellorId,
-        is_deleted: false,
-        // status: { [Op.in]: allowedLeadStatuses }   // Uncomment if you want strict check
-      },
-      attributes: ['id', 'name', 'email', 'phone', 'status', 'user_id'],
+      where: { id: user_id, is_deleted: false },
+      attributes: ["id", "name", "email", "phone", "status", "counsellor_id"],
     });
 
     if (!lead) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Student not found or not assigned to you. Only New/Contacted/Counselling leads are allowed." 
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
     }
 
-    // Optional: Log if lead status is not ideal
-    if (!allowedLeadStatuses.includes(lead.status)) {
-      console.log(`⚠️ Creating application for lead with status: ${lead.status}`);
+    // For non‑admin: must be assigned to this counsellor + allowed status
+    if (!isAdmin) {
+      const allowedLeadStatuses = ["new", "contacted", "counseling"];
+      if (lead.counsellor_id !== counsellorId) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Student not assigned to you" });
+      }
+      if (!allowedLeadStatuses.includes(lead.status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Lead status "${lead.status}" not allowed for creating an application`,
+        });
+      }
     }
 
-    // Create Application
+    // Create application
     const application = await Application.create({
-      user_id: lead.id,           // Important: Using Lead.id
+      user_id: lead.id,
       full_name: applicationData.full_name || lead.name,
       email: applicationData.email || lead.email,
       phone: applicationData.phone || lead.phone,
@@ -208,63 +194,52 @@ export const createApplication = async (req, res) => {
       counselor_notes: applicationData.counselor_notes,
     });
 
-    // Log Activity
     await logActivity({
       leadId: lead.id,
       actionType: "application_created",
-      note: `Application created for ${lead.name} → ${applicationData.target_university || '—'} (${applicationData.course || '—'})`,
+      note: `Application created for ${lead.name} → ${applicationData.target_university || "—"} (${applicationData.course || "—"})`,
       performedBy: counsellorId,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
 
-    // Optional: Send SSE notification
-    // sseManager.sendToUser(lead.id, 'application_created', application);
-
     res.status(201).json({
       success: true,
       message: "Application created successfully",
-      application
+      application,
     });
-
   } catch (error) {
     console.error("❌ Error creating application:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Failed to create application"
+      message: error.message || "Failed to create application",
     });
   }
 };
 
-// ─── UPDATE APPLICATION (COUNSELLOR) ────────────────────────────────────────
-// ─── UPDATE APPLICATION (COUNSELLOR) ────────────────────────────────────────
+// ─── UPDATE APPLICATION (admin can update any) ──────────────────────────────
 export const updateApplication = async (req, res) => {
   try {
     const { id } = req.params;
-    
+    const isAdmin = req.user?.role === "admin";
     const application = await Application.findByPk(id);
+    if (!application)
+      return res.status(404).json({ message: "Application not found" });
 
-    if (!application) {
-      return res.status(404).json({ message: 'Application not found' });
-    }
-
-    // Find the lead using user_id (since we store lead.id in user_id)
-    const lead = await Lead.findOne({
-      where: { 
-        id: application.user_id,           // This is the key fix
-        counsellor_id: req.user.id 
-      }
-    });
-
-    if (!lead && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied - Application not yours' });
+    if (!isAdmin) {
+      const lead = await Lead.findOne({
+        where: { id: application.user_id, counsellor_id: req.user.id },
+      });
+      if (!lead)
+        return res
+          .status(403)
+          .json({ message: "Access denied - Application not yours" });
     }
 
     await application.update(req.body);
-
     await logActivity({
-      leadId: lead?.id || application.user_id,
-      actionType: 'application_updated',
+      leadId: application.user_id,
+      actionType: "application_updated",
       note: `Application updated for ${application.target_university}`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
@@ -273,7 +248,7 @@ export const updateApplication = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Application updated successfully',
+      message: "Application updated successfully",
       data: application,
     });
   } catch (err) {
@@ -282,42 +257,31 @@ export const updateApplication = async (req, res) => {
   }
 };
 
-// ─── DELETE APPLICATION (COUNSELLOR) ────────────────────────────────────────
-// ─── DELETE APPLICATION (COUNSELLOR) ────────────────────────────────────────
+// ─── DELETE APPLICATION (admin can delete any) ──────────────────────────────
 export const deleteApplication = async (req, res) => {
   try {
     const { id } = req.params;
-    
+    const isAdmin = req.user?.role === "admin";
     const application = await Application.findByPk(id);
+    if (!application)
+      return res.status(404).json({ message: "Application not found" });
 
-    if (!application) {
-      return res.status(404).json({ message: 'Application not found' });
+    if (!isAdmin) {
+      const lead = await Lead.findOne({
+        where: { id: application.user_id, counsellor_id: req.user.id },
+      });
+      if (!lead) return res.status(403).json({ message: "Access denied" });
     }
 
-    // Check ownership
-    const lead = await Lead.findOne({
-      where: { 
-        id: application.user_id,
-        counsellor_id: req.user.id 
-      }
-    });
-
-    if (!lead && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    // First soft delete all related documents
     await Document.update(
-      { is_deleted: true }, 
-      { where: { application_id: id } }
+      { is_deleted: true },
+      { where: { application_id: id } },
     );
-
-    // Then delete the application
     await application.destroy();
 
     await logActivity({
-      leadId: lead?.id || application.user_id,
-      actionType: 'application_deleted',
+      leadId: application.user_id,
+      actionType: "application_deleted",
       note: `Application deleted for ${application.target_university}`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
@@ -326,33 +290,30 @@ export const deleteApplication = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Application and related documents deleted successfully',
+      message: "Application and related documents deleted successfully",
     });
   } catch (err) {
     console.error("Error deleting application:", err);
-    
-    if (err.name === 'SequelizeForeignKeyConstraintError' || err.original?.code === 'ER_ROW_IS_REFERENCED_2') {
-      return res.status(400).json({
-        message: "Cannot delete application because it has linked documents. Please try again."
-      });
-    }
-
-    res.status(500).json({ 
-      message: "Error deleting application",
-      error: err.message 
-    });
+    res
+      .status(500)
+      .json({ message: "Error deleting application", error: err.message });
   }
 };
 
-// ─── UPDATE APPLICATION STATUS (COUNSELLOR) ─────────────────────────────────
 export const updateApplicationStatusAsCounsellor = async (req, res) => {
   try {
     const { applicationId } = req.params;
     const { status, counsellor_notes } = req.body;
 
     const validStatuses = [
-      "inquiry", "evaluation", "application submitted", "offer letter received",
-      "offer letter not received", "visa filed", "approved", "reject",
+      "inquiry",
+      "evaluation",
+      "application submitted",
+      "offer letter received",
+      "offer letter not received",
+      "visa filed",
+      "approved",
+      "reject",
     ];
 
     if (!validStatuses.includes(status)) {
@@ -396,30 +357,30 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
     await application.update(updateData);
 
     const student = await User.findByPk(application.user_id, {
-      attributes: ['id', 'name', 'email']
+      attributes: ["id", "name", "email"],
     });
 
     const statusDisplayMap = {
-      "inquiry": "Inquiry",
-      "evaluation": "Evaluation",
+      inquiry: "Inquiry",
+      evaluation: "Evaluation",
       "application submitted": "Application Submitted",
       "offer letter received": "Offer Letter Received",
       "offer letter not received": "Offer Letter Not Received",
       "visa filed": "Visa Filed",
-      "approved": "Approved",
-      "reject": "Rejected"
+      approved: "Approved",
+      reject: "Rejected",
     };
 
-    const notificationMessage = `Your application for ${application.target_university || 'university'} (${application.course || 'course'}) status changed from "${statusDisplayMap[oldStatus] || oldStatus}" to "${statusDisplayMap[status] || status}".`;
+    const notificationMessage = `Your application for ${application.target_university || "university"} (${application.course || "course"}) status changed from "${statusDisplayMap[oldStatus] || oldStatus}" to "${statusDisplayMap[status] || status}".`;
 
     if (student && student.id) {
       sseManager.sendToUser(student.id, {
-        type: 'status_change',
+        type: "status_change",
         applicationId: application.id,
         oldStatus: oldStatus,
         newStatus: status,
         message: notificationMessage,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
 
@@ -437,7 +398,6 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
   }
 };
 
-// ─── GET APPLICATION STATS ─────────────────────────────────────────────────
 export const getApplicationStats = async (req, res) => {
   try {
     const stats = await Application.findAll({

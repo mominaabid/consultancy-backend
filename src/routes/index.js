@@ -9,7 +9,7 @@ import studentApplicationRoutes from "./student/application.routes.js";
 import counsellorDocumentRoutes from "./counsellor/document.routes.js";
 import counsellorApplicationRoutes from "./counsellor/application.routes.js";
 import adminPaymentRoutes from "./admin/payment.routes.js";
-import adminApplicationRoutes from "./admin/application.routes.js";
+// import adminApplicationRoutes from "./admin/application.routes.js";
 import studentPaymentRoutes from "./student/payment.routes.js";
 import sseRoutes from "./sse.routes.js";
 import counsellorProfileRoutes from "./counsellor/counsellorProfile.routes.js";
@@ -36,7 +36,7 @@ router.use("/student", studentProfileRoutes);
 router.use("/admin/leads", adminLeadRoutes);
 router.use("/admin/payments", adminPaymentRoutes);
 router.use("/admin", counsellorRoutes);
-router.use("/admin", adminApplicationRoutes);
+// router.use("/admin", adminApplicationRoutes);
 router.use("/admin", adminProfileRoutes);
 
 router.use("/counsellor/leads", adminLeadRoutes);
