@@ -42,7 +42,7 @@ export const getStudentsWithApplications = async (req, res) => {
 
     const formattedStudents = leads.map((lead) => ({
       id: lead.id,
-      user_id: lead.id,
+      user_id: lead.user_id,
       name: lead.name,
       email: lead.email,
       status: lead.status,
@@ -54,6 +54,7 @@ export const getStudentsWithApplications = async (req, res) => {
           status: app.status,
           created_at: app.created_at,
           student_id: lead.id,
+          user_id: lead.user_id,
           student_name: lead.name,
           student_email: lead.email,
           full_name: app.full_name,
@@ -151,13 +152,28 @@ export const createApplication = async (req, res) => {
     // Find the lead (student)
     const lead = await Lead.findOne({
       where: { id: user_id, is_deleted: false },
-      attributes: ["id", "name", "email", "phone", "status", "counsellor_id"],
+      attributes: [
+        "id",
+        "user_id",
+        "name",
+        "email",
+        "phone",
+        "status",
+        "counsellor_id",
+      ],
     });
 
     if (!lead) {
       return res
         .status(404)
         .json({ success: false, message: "Student not found" });
+    }
+
+    if (!lead.user_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Student record does not have an associated user account.",
+      });
     }
 
     // For non‑admin: must be assigned to this counsellor + allowed status
@@ -178,7 +194,7 @@ export const createApplication = async (req, res) => {
 
     // Create application
     const application = await Application.create({
-      user_id: lead.id,
+      user_id: lead.user_id,
       full_name: applicationData.full_name || lead.name,
       email: applicationData.email || lead.email,
       phone: applicationData.phone || lead.phone,

@@ -78,6 +78,7 @@ User.hasMany(Document, {
 
 Lead.hasMany(Application, {
   foreignKey: 'user_id',     // because we are storing lead.id in user_id
+  sourceKey: 'user_id',
   as: 'applications'
 });
 
