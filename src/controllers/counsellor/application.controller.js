@@ -175,6 +175,7 @@ export const getStudentsWithApplications = async (req, res) => {
       user_id: lead.user_id,
       name: lead.name,
       email: lead.email,
+      phone: lead.phone,
       status: lead.status,
       // applications:
       //   lead.applications?.map((app) => ({

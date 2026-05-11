@@ -39,10 +39,11 @@ export const getAdminProfile = async (req, res) => {
 export const updateAdminProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { name, email } = req.body;
+    const { name } = req.body; // Only accept name field
 
-    if (!name || !email) {
-      return res.status(400).json({ message: "Name and email are required" });
+    // Validate: name is required
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: "Name is required" });
     }
 
     const admin = await User.findOne({
@@ -53,19 +54,11 @@ export const updateAdminProfile = async (req, res) => {
       return res.status(404).json({ message: "Admin not found" });
     }
 
-    if (email !== admin.email) {
-      const existingUser = await User.findOne({
-        where: { email, is_deleted: false },
-      });
-      if (existingUser) {
-        return res.status(400).json({ message: "Email already in use" });
-      }
-    }
-
-    admin.name = name;
-    admin.email = email;
+    // Update only the name field
+    admin.name = name.trim();
     await admin.save();
 
+    // Return updated profile (excluding password hash)
     res.status(200).json({
       id: admin.id,
       name: admin.name,
@@ -115,9 +108,7 @@ export const changeAdminPassword = async (req, res) => {
     }
 
     const salt = await bcrypt.genSalt(10);
-
     admin.password_hash = await bcrypt.hash(newPassword, salt);
-
     await admin.save();
 
     res.status(200).json({ message: "Password changed successfully" });

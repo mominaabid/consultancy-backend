@@ -1,10 +1,9 @@
-import {Counsellor} from "../../models/mysql/counsellor.js";
-import User  from "../../models/mysql/User.js";
-import sequelize from '../../config/db.js';
-import { Op } from 'sequelize';
+import { Counsellor } from "../../models/mysql/counsellor.js";
+import User from "../../models/mysql/User.js";
+import sequelize from "../../config/db.js";
+import { Op } from "sequelize";
 
-const normalizeCNIC = (cnic) => cnic.replace(/-/g, '');
-
+const normalizeCNIC = (cnic) => cnic.replace(/-/g, "");
 
 export const getCounsellorProfile = async (req, res) => {
   try {
@@ -13,11 +12,11 @@ export const getCounsellorProfile = async (req, res) => {
         user_id: req.user.id,
         is_deleted: false,
       },
-      attributes: { exclude: ['id', 'user_id', 'is_deleted'] },
+      attributes: { exclude: ["id", "user_id", "is_deleted"] },
     });
 
     if (!counsellor) {
-      return res.status(404).json({ message: 'Counsellor profile not found' });
+      return res.status(404).json({ message: "Counsellor profile not found" });
     }
 
     const response = counsellor.toJSON();
@@ -26,15 +25,15 @@ export const getCounsellorProfile = async (req, res) => {
 
     res.json(response);
   } catch (error) {
-    console.error('GET profile error:', error);
-    res.status(500).json({ message: 'Server error, please try again later' });
+    console.error("GET profile error:", error);
+    res.status(500).json({ message: "Server error, please try again later" });
   }
 };
 
-
 export const updateCounsellorProfile = async (req, res) => {
-  const { name, father_name, email, phone, cnic, address } = req.body;
-  const normalizedCNIC = normalizeCNIC(cnic);
+  const { name, father_name, phone, cnic, address } = req.body;
+  // email is NOT taken from req.body (we keep existing email)
+  const normalizedCNIC = cnic ? normalizeCNIC(cnic) : undefined;
 
   const transaction = await sequelize.transaction();
 
@@ -46,68 +45,58 @@ export const updateCounsellorProfile = async (req, res) => {
 
     if (!counsellor) {
       await transaction.rollback();
-      return res.status(404).json({ message: 'Counsellor profile not found' });
+      return res.status(404).json({ message: "Counsellor profile not found" });
     }
 
-    // Email check
-    const existingEmail = await Counsellor.findOne({
-      where: {
-        email,
-        user_id: { [Op.ne]: req.user.id },
-        is_deleted: false,
-      },
-      transaction,
-    });
+    // Build update object dynamically
+    const counsellorUpdate = {};
+    if (name !== undefined) counsellorUpdate.name = name;
+    if (father_name !== undefined) counsellorUpdate.father_name = father_name;
+    if (phone !== undefined) counsellorUpdate.phone = phone;
+    if (cnic !== undefined) counsellorUpdate.cnic = normalizedCNIC;
+    if (address !== undefined) counsellorUpdate.address = address;
+    // Email is never updated from this endpoint
 
-    if (existingEmail) {
-      await transaction.rollback();
-      return res.status(409).json({ message: 'Email already used by another counsellor' });
+    // Only run uniqueness checks for fields that are being changed
+    if (phone && phone !== counsellor.phone) {
+      const existingPhone = await Counsellor.findOne({
+        where: {
+          phone,
+          user_id: { [Op.ne]: req.user.id },
+          is_deleted: false,
+        },
+        transaction,
+      });
+      if (existingPhone) {
+        await transaction.rollback();
+        return res
+          .status(409)
+          .json({ message: "Phone number already registered" });
+      }
     }
 
-    // Phone check
-    const existingPhone = await Counsellor.findOne({
-      where: {
-        phone,
-        user_id: { [Op.ne]: req.user.id },
-        is_deleted: false,
-      },
-      transaction,
-    });
-
-    if (existingPhone) {
-      await transaction.rollback();
-      return res.status(409).json({ message: 'Phone number already registered' });
-    }
-
-    // CNIC check
-    const existingCNIC = await Counsellor.findOne({
-      where: {
-        cnic: normalizedCNIC,
-        user_id: { [Op.ne]: req.user.id },
-        is_deleted: false,
-      },
-      transaction,
-    });
-
-    if (existingCNIC) {
-      await transaction.rollback();
-      return res.status(409).json({ message: 'CNIC already registered' });
+    if (cnic && normalizedCNIC !== counsellor.cnic) {
+      const existingCNIC = await Counsellor.findOne({
+        where: {
+          cnic: normalizedCNIC,
+          user_id: { [Op.ne]: req.user.id },
+          is_deleted: false,
+        },
+        transaction,
+      });
+      if (existingCNIC) {
+        await transaction.rollback();
+        return res.status(409).json({ message: "CNIC already registered" });
+      }
     }
 
     // Update counsellor
-    await counsellor.update(
-      { name, father_name, email, phone, cnic: normalizedCNIC, address },
-      { transaction }
-    );
+    await counsellor.update(counsellorUpdate, { transaction });
 
-    // Sync User table
+    // Sync User table (only name, email remains unchanged)
     const user = await User.findByPk(req.user.id, { transaction });
-
-    if (user) {
-      await user.update(
-        { name, email },
-        { transaction }
-      );
+    if (user && name !== undefined) {
+      await user.update({ name }, { transaction });
     }
 
     await transaction.commit();
@@ -120,7 +109,7 @@ export const updateCounsellorProfile = async (req, res) => {
     res.json(updatedProfile);
   } catch (error) {
     await transaction.rollback();
-    console.error('UPDATE profile error:', error);
-    res.status(500).json({ message: 'Server error, update failed' });
+    console.error("UPDATE profile error:", error);
+    res.status(500).json({ message: "Server error, update failed" });
   }
 };
