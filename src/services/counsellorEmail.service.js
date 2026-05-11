@@ -1,7 +1,7 @@
-import { Resend } from 'resend';
+import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
 export async function sendCounsellorPasswordSetupEmail({
   name,
@@ -47,10 +47,15 @@ export async function sendCounsellorPasswordSetupEmail({
   }
 }
 
-
-export async function sendLeadAssignmentEmail({ counsellorEmail, counsellorName, lead }) {
+export async function sendLeadAssignmentEmail({
+  counsellorEmail,
+  counsellorName,
+  lead,
+}) {
   try {
-    console.log(`📧 Sending lead assignment email to counsellor: ${counsellorEmail}`);
+    console.log(
+      `📧 Sending lead assignment email to counsellor: ${counsellorEmail}`,
+    );
 
     const { data, error } = await resend.emails.send({
       from: `"Educatia" <${FROM_EMAIL}>`,
@@ -73,19 +78,19 @@ export async function sendLeadAssignmentEmail({ counsellorEmail, counsellorName,
             </tr>
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Phone:</td>
-              <td style="padding: 8px 0;">${lead.phone || '—'}</td>
+              <td style="padding: 8px 0;">${lead.phone || "—"}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Preferred Country:</td>
-              <td style="padding: 8px 0;">${lead.preferred_country || '—'}</td>
+              <td style="padding: 8px 0;">${lead.preferred_country || "—"}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Study Level:</td>
-              <td style="padding: 8px 0;">${lead.study_level || '—'}</td>
+              <td style="padding: 8px 0;">${lead.study_level || "—"}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; font-weight: bold;">Source:</td>
-              <td style="padding: 8px 0;">${lead.source || '—'}</td>
+              <td style="padding: 8px 0;">${lead.source || "—"}</td>
             </tr>
           </table>
 
@@ -105,10 +110,12 @@ export async function sendLeadAssignmentEmail({ counsellorEmail, counsellorName,
     });
 
     if (error) throw error;
-    console.log(`✅ Lead assignment email sent to ${counsellorEmail}, id: ${data.id}`);
+    console.log(
+      `✅ Lead assignment email sent to ${counsellorEmail}, id: ${data.id}`,
+    );
     return data;
   } catch (error) {
-    console.error('❌ Failed to send lead assignment email:', error);
+    console.error("❌ Failed to send lead assignment email:", error);
     // Don't throw – just log, so the API request doesn’t fail
     return null;
   }
