@@ -257,7 +257,6 @@ export async function updateStage(req, res) {
 
     // If note was provided, save it against the OLD (previous) stage
     if (note && note.trim()) {
-      // Map status key to label manually (since STAGES is not imported)
       const stageLabels = {
         new: "New",
         contacted: "Contacted",
@@ -266,7 +265,6 @@ export async function updateStage(req, res) {
         visa_approved: "Visa Approved",
         success: "Success",
         rejected: "Rejected",
-        // Add more stages as needed
       };
 
       const oldStageLabel = stageLabels[oldStatus] || oldStatus;
@@ -279,6 +277,95 @@ export async function updateStage(req, res) {
         performedByRole: req.user.role,
         performedByName: req.user.name,
       });
+    }
+
+    // ===========================
+    //  RESTORED COUNSELING FLOW
+    // ===========================
+    const isMovingToCounseling =
+      status === "counseling" && oldStatus !== "counseling";
+
+    if (isMovingToCounseling && lead.email) {
+      const existingUser = await User.findOne({
+        where: { email: lead.email },
+      });
+
+      let student;
+
+      if (existingUser && existingUser.role === "student") {
+        student = existingUser;
+
+        await PasswordResetToken.destroy({
+          where: { user_id: student.id },
+        });
+
+        if (lead.user_id !== student.id) {
+          lead.user_id = student.id;
+          await lead.save();
+        }
+      } else if (!existingUser) {
+        student = await User.create({
+          name: lead.name,
+          email: lead.email,
+          password_hash: "PENDING_SETUP",
+          role: "student",
+          is_active: false,
+        });
+
+        lead.user_id = student.id;
+        await lead.save();
+      } else {
+        return res.json({ message: "User exists with non-student role", lead });
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+
+      await PasswordResetToken.create({
+        user_id: student.id,
+        token,
+        expires_at: new Date(Date.now() + 86400000),
+      });
+
+      const setupLink = `${process.env.FRONTEND_URL}/setup-password?token=${token}`;
+
+      await sendPasswordSetupEmail({
+        name: lead.name,
+        email: lead.email,
+        setupLink,
+      });
+
+      await logActivity({
+        leadId: lead.id,
+        actionType: "setup_email_sent",
+        note: `Password setup email sent to ${lead.email}`,
+        performedBy: req.user.id,
+        performedByRole: req.user.role,
+        performedByName: req.user.name,
+      });
+
+      // Conversation creation
+      if (lead.counsellor_id) {
+        const counsellor = await User.findByPk(lead.counsellor_id, {
+          attributes: ["name"],
+        });
+
+        const exists = await Conversation.findOne({
+          where: {
+            student_id: student.id,
+            counsellor_id: lead.counsellor_id,
+          },
+        });
+
+        if (!exists) {
+          await Conversation.create({
+            student_id: student.id,
+            counsellor_id: lead.counsellor_id,
+            student_name: lead.name,
+            counsellor_name: counsellor?.name || "Counsellor",
+            last_message: "",
+          });
+        }
+      }
     }
 
     res.json({ message: "Stage updated successfully", lead });
