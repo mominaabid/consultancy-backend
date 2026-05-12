@@ -1,4 +1,3 @@
-// src/routes/counsellor/application.routes.js
 import express from "express";
 import {
   getStudentsWithApplications,
@@ -18,8 +17,10 @@ router.use(auth);
 
 // Only counsellors and admins can access
 router.use((req, res, next) => {
-  if (req.user.role !== 'counsellor' && req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Access denied. Counsellor or admin only.' });
+  if (req.user.role !== "counsellor" && req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Counsellor or admin only." });
   }
   next();
 });
@@ -27,7 +28,10 @@ router.use((req, res, next) => {
 // Existing routes
 router.get("/applications/students", getStudentsWithApplications);
 router.get("/applications/student/:studentId", getStudentApplications);
-router.put("/applications/:applicationId/status", updateApplicationStatusAsCounsellor);
+router.put(
+  "/applications/:applicationId/status",
+  updateApplicationStatusAsCounsellor,
+);
 router.get("/applications/stats", getApplicationStats);
 
 // New routes

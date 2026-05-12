@@ -1,4 +1,3 @@
-// src/controllers/counsellor/application.controller.js
 import db from "../../models/mysql/index.js";
 import { logActivity } from "../../services/activityLog.service.js";
 import { Op } from "sequelize";
@@ -290,237 +289,6 @@ export const getAssignedStudents = async (req, res) => {
   }
 };
 
-// ─── CREATE APPLICATION (admin can create for ANY lead) ─────────────────────
-// export const createApplication = async (req, res) => {
-//   try {
-//     const { user_id, ...applicationData } = req.body;
-//     const counsellorId = req.user?.id;
-//     const isAdmin = req.user?.role === "admin";
-
-//     if (!user_id) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "user_id is required" });
-//     }
-
-//     // Find the lead (student)
-//     const lead = await Lead.findOne({
-//       where: { id: user_id, is_deleted: false },
-//       attributes: [
-//         "id",
-//         "user_id",
-//         "name",
-//         "email",
-//         "phone",
-//         "status",
-//         "counsellor_id",
-//       ],
-//     });
-
-//     if (!lead) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Student not found" });
-//     }
-
-//     if (!lead.user_id) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Student record does not have an associated user account.",
-//       });
-//     }
-
-//     // For non‑admin: must be assigned to this counsellor + allowed status
-//     if (!isAdmin) {
-//       const allowedLeadStatuses = ["new", "contacted", "counseling"];
-//       if (lead.counsellor_id !== counsellorId) {
-//         return res
-//           .status(403)
-//           .json({ success: false, message: "Student not assigned to you" });
-//       }
-//       if (!allowedLeadStatuses.includes(lead.status)) {
-//         return res.status(400).json({
-//           success: false,
-//           message: `Lead status "${lead.status}" not allowed for creating an application`,
-//         });
-//       }
-//     }
-
-//     // Create application
-//     const application = await Application.create({
-//       user_id: lead.user_id,
-//       full_name: applicationData.full_name || lead.name,
-//       email: applicationData.email || lead.email,
-//       phone: applicationData.phone || lead.phone,
-//       target_university: applicationData.target_university,
-//       course: applicationData.course,
-//       target_country: applicationData.target_country,
-//       deadline: applicationData.deadline,
-//       status: applicationData.status || "inquiry",
-//       last_degree: applicationData.last_degree,
-//       cgpa: applicationData.cgpa,
-//       english_test: applicationData.english_test,
-//       test_score: applicationData.test_score,
-//       counselor_notes: applicationData.counselor_notes,
-//     });
-
-//     await sendStatusUpdateEmail(application, "inquiry");
-
-//     await logActivity({
-//       leadId: lead.id,
-//       actionType: "application_created",
-//       note: `Application created for ${lead.name} → ${applicationData.target_university || "—"} (${applicationData.course || "—"})`,
-//       performedBy: counsellorId,
-//       performedByRole: req.user.role,
-//       performedByName: req.user.name,
-//     });
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Application created successfully",
-//       application,
-//     });
-
-//     if (student && student.id) {
-//       sseManager.sendToUser(student.id, {
-//         type: "application_created",
-//         applicationId: application.id,
-//         message: `New application created for ${application.target_university} (${application.course}).`,
-//         timestamp: new Date().toISOString(),
-//       });
-//     }
-//   } catch (error) {
-//     console.error("❌ Error creating application:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: error.message || "Failed to create application",
-//     });
-//   }
-// };
-
-// // ─── UPDATE APPLICATION (admin can update any) ──────────────────────────────
-// export const updateApplication = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const isAdmin = req.user?.role === "admin";
-//     const application = await Application.findByPk(id);
-//     if (!application)
-//       return res.status(404).json({ message: "Application not found" });
-
-//     if (!isAdmin) {
-//       const lead = await Lead.findOne({
-//         where: { id: application.user_id, counsellor_id: req.user.id },
-//       });
-//       if (!lead)
-//         return res
-//           .status(403)
-//           .json({ message: "Access denied - Application not yours" });
-//     }
-
-//     await application.update(req.body);
-
-//     if (req.body.status && req.body.status !== oldStatus) {
-//       await sendStatusUpdateEmail(application, req.body.status, oldStatus);
-//     }
-
-//     await logActivity({
-//       leadId: application.user_id,
-//       actionType: "application_updated",
-//       note: `Application updated for ${application.target_university}`,
-//       performedBy: req.user.id,
-//       performedByRole: req.user.role,
-//       performedByName: req.user.name,
-//     });
-
-//     res.json({
-//       success: true,
-//       message: "Application updated successfully",
-//       data: application,
-//     });
-
-//     // After await application.update(req.body);
-//     // Build a meaningful message
-//     let changes = [];
-//     if (
-//       req.body.target_university &&
-//       req.body.target_university !== application.target_university
-//     ) {
-//       changes.push(`university changed to ${req.body.target_university}`);
-//     }
-//     if (req.body.course && req.body.course !== application.course) {
-//       changes.push(`course changed to ${req.body.course}`);
-//     }
-//     if (req.body.status && req.body.status !== oldStatus) {
-//       changes.push(`status changed to ${req.body.status}`);
-//     }
-//     // ... add other fields as needed
-//     let message = `Your application was updated. ${changes.join(", ")}`;
-//     if (changes.length === 0) message = `Your application was updated.`;
-
-//     sseManager.sendToUser(student.id, {
-//       type: "application_updated",
-//       applicationId: application.id,
-//       message: message,
-//       timestamp: new Date().toISOString(),
-//     });
-//   } catch (err) {
-//     console.error("Error updating application:", err);
-//     res.status(500).json({ message: "Error updating application" });
-//   }
-// };
-
-// // ─── DELETE APPLICATION (admin can delete any) ──────────────────────────────
-// export const deleteApplication = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const isAdmin = req.user?.role === "admin";
-//     const application = await Application.findByPk(id);
-//     if (!application)
-//       return res.status(404).json({ message: "Application not found" });
-
-//     if (!isAdmin) {
-//       const lead = await Lead.findOne({
-//         where: { id: application.user_id, counsellor_id: req.user.id },
-//       });
-//       if (!lead) return res.status(403).json({ message: "Access denied" });
-//     }
-
-//     await Document.update(
-//       { is_deleted: true },
-//       { where: { application_id: id } },
-//     );
-
-//     // Before application.destroy()
-//     sseManager.sendToUser(student.id, {
-//       type: "application_deleted",
-//       applicationId: application.id,
-//       message: `Your application for ${application.target_university} (${application.course}) has been deleted.`,
-//       timestamp: new Date().toISOString(),
-//     });
-
-//     await application.destroy();
-
-//     await logActivity({
-//       leadId: application.user_id,
-//       actionType: "application_deleted",
-//       note: `Application deleted for ${application.target_university}`,
-//       performedBy: req.user.id,
-//       performedByRole: req.user.role,
-//       performedByName: req.user.name,
-//     });
-
-//     res.json({
-//       success: true,
-//       message: "Application and related documents deleted successfully",
-//     });
-//   } catch (err) {
-//     console.error("Error deleting application:", err);
-//     res
-//       .status(500)
-//       .json({ message: "Error deleting application", error: err.message });
-//   }
-// };
-
 export const createApplication = async (req, res) => {
   try {
     const { user_id, ...applicationData } = req.body;
@@ -629,38 +397,124 @@ export const createApplication = async (req, res) => {
   }
 };
 
+// export const updateApplication = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const isAdmin = req.user?.role === "admin";
+//     const application = await Application.findByPk(id);
+//     if (!application)
+//       return res.status(404).json({ message: "Application not found" });
+
+//     if (!isAdmin) {
+//       const lead = await Lead.findOne({
+//         where: { id: application.user_id, counsellor_id: req.user.id },
+//       });
+//       if (!lead)
+//         return res
+//           .status(403)
+//           .json({ message: "Access denied - Application not yours" });
+//     }
+
+//     // Store old values for comparison
+//     const oldStatus = application.status;
+//     const oldUniversity = application.target_university;
+//     const oldCourse = application.course;
+
+//     await application.update(req.body);
+
+//     // Send email if status changed
+//     if (req.body.status && req.body.status !== oldStatus) {
+//       await sendStatusUpdateEmail(application, req.body.status, oldStatus);
+//     }
+
+//     await logActivity({
+//       leadId: application.user_id,
+//       actionType: "application_updated",
+//       note: `Application updated for ${application.target_university}`,
+//       performedBy: req.user.id,
+//       performedByRole: req.user.role,
+//       performedByName: req.user.name,
+//     });
+
+//     // Build meaningful notification message
+//     let changes = [];
+//     if (
+//       req.body.target_university &&
+//       req.body.target_university !== oldUniversity
+//     ) {
+//       changes.push(`university changed to ${req.body.target_university}`);
+//     }
+//     if (req.body.course && req.body.course !== oldCourse) {
+//       changes.push(`course changed to ${req.body.course}`);
+//     }
+//     if (req.body.status && req.body.status !== oldStatus) {
+//       changes.push(`status changed to ${req.body.status}`);
+//     }
+//     let message = `Your application was updated. ${changes.join(", ")}`;
+//     if (changes.length === 0) message = "Your application was updated.";
+
+//     // ✅ Send SSE notification to student
+//     const student = await User.findByPk(application.user_id, {
+//       attributes: ["id", "name", "email"],
+//     });
+//     if (student && student.id) {
+//       sseManager.sendToUser(student.id, {
+//         type: "application_updated",
+//         applicationId: application.id,
+//         message: message,
+//         timestamp: new Date().toISOString(),
+//       });
+//     }
+
+//     res.json({
+//       success: true,
+//       message: "Application updated successfully",
+//       data: application,
+//     });
+//   } catch (err) {
+//     console.error("Error updating application:", err);
+//     res.status(500).json({ message: "Error updating application" });
+//   }
+// };
+
 export const updateApplication = async (req, res) => {
   try {
     const { id } = req.params;
     const isAdmin = req.user?.role === "admin";
     const application = await Application.findByPk(id);
-    if (!application)
+    if (!application) {
       return res.status(404).json({ message: "Application not found" });
+    }
+
+    // 🛡️ Prevent user_id update – it should never change
+    const updateData = { ...req.body };
+    delete updateData.user_id; // remove user_id from update payload
 
     if (!isAdmin) {
       const lead = await Lead.findOne({
-        where: { id: application.user_id, counsellor_id: req.user.id },
+        where: { user_id: application.user_id, counsellor_id: req.user.id },
       });
-      if (!lead)
+      if (!lead) {
         return res
           .status(403)
           .json({ message: "Access denied - Application not yours" });
+      }
     }
 
-    // Store old values for comparison
     const oldStatus = application.status;
     const oldUniversity = application.target_university;
     const oldCourse = application.course;
 
-    await application.update(req.body);
+    await application.update(updateData);
 
     // Send email if status changed
     if (req.body.status && req.body.status !== oldStatus) {
       await sendStatusUpdateEmail(application, req.body.status, oldStatus);
     }
 
+    // Log activity
     await logActivity({
-      leadId: application.user_id,
+      leadId: application.user_id, // still using the correct user_id
       actionType: "application_updated",
       note: `Application updated for ${application.target_university}`,
       performedBy: req.user.id,
@@ -668,32 +522,26 @@ export const updateApplication = async (req, res) => {
       performedByName: req.user.name,
     });
 
-    // Build meaningful notification message
-    let changes = [];
+    // Send SSE notification
+    const student = await User.findByPk(application.user_id, {
+      attributes: ["id", "name", "email"],
+    });
+    let message = "Your application was updated.";
     if (
       req.body.target_university &&
       req.body.target_university !== oldUniversity
     ) {
-      changes.push(`university changed to ${req.body.target_university}`);
+      message = `University changed to ${req.body.target_university}.`;
+    } else if (req.body.course && req.body.course !== oldCourse) {
+      message = `Course changed to ${req.body.course}.`;
+    } else if (req.body.status && req.body.status !== oldStatus) {
+      message = `Status changed to ${req.body.status}.`;
     }
-    if (req.body.course && req.body.course !== oldCourse) {
-      changes.push(`course changed to ${req.body.course}`);
-    }
-    if (req.body.status && req.body.status !== oldStatus) {
-      changes.push(`status changed to ${req.body.status}`);
-    }
-    let message = `Your application was updated. ${changes.join(", ")}`;
-    if (changes.length === 0) message = "Your application was updated.";
-
-    // ✅ Send SSE notification to student
-    const student = await User.findByPk(application.user_id, {
-      attributes: ["id", "name", "email"],
-    });
     if (student && student.id) {
       sseManager.sendToUser(student.id, {
         type: "application_updated",
         applicationId: application.id,
-        message: message,
+        message,
         timestamp: new Date().toISOString(),
       });
     }
