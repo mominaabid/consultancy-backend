@@ -75,6 +75,7 @@ export async function getMyPayments(req, res) {
 }
 
 // ─── MAKE PAYMENT ──────────────────────────────────────────────────────────
+// ─── MAKE PAYMENT ──────────────────────────────────────────────────────────
 export async function makePayment(req, res) {
   try {
     const { application_id, amount, mode, payment_date, notes } = req.body;
@@ -103,16 +104,14 @@ export async function makePayment(req, res) {
       payment_date: payment_date || new Date(),
       notes: notes || null,
       payment_proof: proofUrl,
-      status: mode === 'cash' ? 'pending' : 'awaiting_verification',
+      status: 'awaiting_verification', // ✅ FIXED: Use same status for both modes
       recorded_by: req.user.id,
       paid_at: new Date(),
     });
 
     res.status(201).json({
       success: true,
-      message: mode === 'cash' 
-        ? 'Payment recorded successfully! Admin will verify it soon.' 
-        : 'Payment submitted successfully! Please wait for admin verification.',
+      message: 'Payment submitted successfully! Please wait for admin verification.',
       payment
     });
   } catch (error) {

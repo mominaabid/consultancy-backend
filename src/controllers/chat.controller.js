@@ -288,8 +288,24 @@ export async function markAsRead(req, res) {
     );
 
     // Reset unread count
-    const unreadField = role === 'student' ? 'student_unread' : 'counsellor_unread';
-    await Conversation.findByIdAndUpdate(conversationId, { [unreadField]: 0 });
+let unreadField = '';
+
+if (role?.toLowerCase() === 'student') {
+  unreadField = 'student_unread';
+}
+
+if (
+  role?.toLowerCase() === 'counsellor' ||
+  role?.toLowerCase() === 'counselor'
+) {
+  unreadField = 'counsellor_unread';
+}
+    if (unreadField) {
+  await Conversation.findByIdAndUpdate(
+    conversationId,
+    { [unreadField]: 0 }
+  );
+}
 
     res.json({ message: 'Messages marked as read.' });
   } catch (error) {
