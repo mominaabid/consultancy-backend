@@ -182,20 +182,35 @@ export async function updateLead(req, res) {
 // ─── PUT /admin/leads/:id/assign ──────────────────────────────────────────────
 export async function assignCounsellor(req, res) {
   try {
-    const lead = await Lead.findByPk(req.params.id);
-    if (!lead) return res.status(404).json({ message: "Lead not found." });
-
-    const prevCounsellor = lead.counsellor_id
-      ? await User.findByPk(lead.counsellor_id, { attributes: ["name"] })
-      : null;
+    console.log("🔥 ASSIGN API HIT");
+    console.log("BODY:", req.body);
+    console.log("COUNCELLOR ID:", req.body.counsellor_id);
 
     const newCounsellorId = req.body.counsellor_id
       ? Number(req.body.counsellor_id)
       : null;
 
-    const newCounsellor = newCounsellorId
-      ? await User.findByPk(newCounsellorId, { attributes: ["name", "email"] })
+    console.log("PARSED ID:", newCounsellorId);
+
+    const lead = await Lead.findByPk(req.params.id);
+
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found." });
+    }
+
+    const prevCounsellor = lead.counsellor_id
+      ? await User.findByPk(lead.counsellor_id, {
+          attributes: ["name"],
+        })
       : null;
+
+    const newCounsellor = newCounsellorId
+      ? await User.findByPk(newCounsellorId, {
+          attributes: ["name", "email"],
+        })
+      : null;
+
+    console.log("FOUND COUNSELLOR:", newCounsellor);
 
     lead.counsellor_id = newCounsellorId;
     await lead.save();
@@ -213,11 +228,19 @@ export async function assignCounsellor(req, res) {
 
     // ✅ send email on assignment
     if (newCounsellor?.email) {
-      sendLeadAssignmentEmail({
-        counsellorEmail: newCounsellor.email,
-        counsellorName: newCounsellor.name,
-        lead: lead.toJSON(),
-      }).catch((err) => console.error("Background email error:", err));
+      try {
+        const result = await sendLeadAssignmentEmail({
+          counsellorEmail: newCounsellor.email,
+          counsellorName: newCounsellor.name,
+          lead: lead.toJSON(),
+        });
+
+        console.log("✅ EMAIL RESULT:", result);
+      } catch (err) {
+        console.error("❌ Background email error:", err);
+      }
+    } else {
+      console.log("❌ No counsellor email found");
     }
 
     res.json(lead);
