@@ -251,8 +251,7 @@ export async function assignCounsellor(req, res) {
 }
 
 // ─── PUT /admin/leads/:id/stage ───────────────────────────────────────────────
-// PUT /admin/leads/:id/stage
-// PUT /admin/leads/:id/stage
+// ─── PUT /admin/leads/:id/stage ───────────────────────────────────────────────
 export async function updateStage(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
@@ -278,7 +277,7 @@ export async function updateStage(req, res) {
       performedByName: req.user.name,
     });
 
-    // If note was provided, save it against the OLD (previous) stage
+    // === IMPORTANT: Save note with NEW stage ===
     if (note && note.trim()) {
       const stageLabels = {
         new: "New",
@@ -290,37 +289,29 @@ export async function updateStage(req, res) {
         rejected: "Rejected",
       };
 
-      const oldStageLabel = stageLabels[oldStatus] || oldStatus;
+      const newStageLabel = stageLabels[status] || status;
 
       await logActivity({
         leadId: lead.id,
         actionType: "note_added",
-        note: `[${oldStageLabel}] ${note}`,
+        note: `[${newStageLabel}] ${note}`,
         performedBy: req.user.id,
         performedByRole: req.user.role,
         performedByName: req.user.name,
       });
     }
 
-    // ===========================
-    //  RESTORED COUNSELING FLOW
-    // ===========================
-    const isMovingToCounseling =
-      status === "counseling" && oldStatus !== "counseling";
+    // Keep your existing counseling flow
+    const isMovingToCounseling = status === "counseling" && oldStatus !== "counseling";
 
     if (isMovingToCounseling && lead.email) {
-      const existingUser = await User.findOne({
-        where: { email: lead.email },
-      });
+      const existingUser = await User.findOne({ where: { email: lead.email } });
 
       let student;
 
       if (existingUser && existingUser.role === "student") {
         student = existingUser;
-
-        await PasswordResetToken.destroy({
-          where: { user_id: student.id },
-        });
+        await PasswordResetToken.destroy({ where: { user_id: student.id } });
 
         if (lead.user_id !== student.id) {
           lead.user_id = student.id;
@@ -337,8 +328,6 @@ export async function updateStage(req, res) {
 
         lead.user_id = student.id;
         await lead.save();
-      } else {
-        return res.json({ message: "User exists with non-student role", lead });
       }
 
       const token = crypto.randomBytes(32).toString("hex");
@@ -368,15 +357,10 @@ export async function updateStage(req, res) {
 
       // Conversation creation
       if (lead.counsellor_id) {
-        const counsellor = await User.findByPk(lead.counsellor_id, {
-          attributes: ["name"],
-        });
+        const counsellor = await User.findByPk(lead.counsellor_id, { attributes: ["name"] });
 
         const exists = await Conversation.findOne({
-          where: {
-            student_id: student.id,
-            counsellor_id: lead.counsellor_id,
-          },
+          where: { student_id: student.id, counsellor_id: lead.counsellor_id }
         });
 
         if (!exists) {
@@ -483,22 +467,33 @@ export async function addNoteOnly(req, res) {
     const lead = await Lead.findByPk(req.params.id);
     if (!lead) return res.status(404).json({ message: "Lead not found." });
 
-    const userNote = req.body.note;
-
-    if (!userNote || !userNote.trim()) {
+    const { note } = req.body;
+    if (!note || !note.trim()) {
       return res.status(400).json({ message: "Note is required." });
     }
+
+    const stageLabels = {
+      new: "New",
+      contacted: "Contacted",
+      counseling: "Counseling",
+      visa_filed: "Visa Filed",
+      visa_approved: "Visa Approved",
+      success: "Success",
+      rejected: "Rejected",
+    };
+
+    const currentStageLabel = stageLabels[lead.status] || lead.status;
 
     await logActivity({
       leadId: lead.id,
       actionType: "note_added",
-      note: userNote,
+      note: `[${currentStageLabel}] ${note}`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
 
-    res.json({ message: "Note added successfully", lead });
+    res.json({ message: "Note added successfully" });
   } catch (error) {
     console.error("❌ addNoteOnly error:", error);
     res.status(500).json({ message: error.message });
