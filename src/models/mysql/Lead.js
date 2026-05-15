@@ -1,43 +1,57 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../../config/db.js';
+import { DataTypes } from "sequelize";
+import sequelize from "../../config/db.js";
 
-const Lead = sequelize.define('Lead', {
-  id: { 
-    type: DataTypes.INTEGER, 
-    primaryKey: true, 
-    autoIncrement: true 
-  },
-
-   user_id: {                    
-    type: DataTypes.INTEGER,
-    allowNull: true,             
-    references: {
-      model: 'users',
-      key: 'id'
+const Lead = sequelize.define(
+  "Lead",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
     },
-    onDelete: 'SET NULL'
+
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "users",
+        key: "id",
+      },
+      onDelete: "SET NULL",
+    },
+    name: DataTypes.STRING,
+    email: DataTypes.STRING,
+    phone: DataTypes.STRING,
+    source: DataTypes.ENUM("website", "walkin", "whatsapp", "email"),
+    preferred_country: DataTypes.STRING,
+    study_level: DataTypes.STRING,
+    status: {
+      type: DataTypes.ENUM(
+        "new",
+        "contacted",
+        "counseling",
+        "applied",
+        "visa",
+        "success",
+        "rejected",
+      ),
+      defaultValue: "new",
+    },
+    counsellor_id: DataTypes.INTEGER,
+    is_deleted: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    profile_picture: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   },
-  name: DataTypes.STRING,
-  email: DataTypes.STRING,
-  phone: DataTypes.STRING,
-  source: DataTypes.ENUM('website', 'walkin', 'whatsapp', 'email'),
-  preferred_country: DataTypes.STRING,
-  study_level: DataTypes.STRING,
-  status: {
-    type: DataTypes.ENUM(
-      'new', 'contacted', 'counseling', 'applied', 'visa', 'success', 'rejected'
-    ),
-    defaultValue: 'new'
+  {
+    tableName: "leads",
+    timestamps: true,
+    underscored: true,
   },
-  counsellor_id: DataTypes.INTEGER,
-  is_deleted: { 
-    type: DataTypes.BOOLEAN, 
-    defaultValue: false 
-  }
-}, {
-  tableName: 'leads',
-  timestamps: true,
-   underscored: true
-});
+);
 
 export default Lead;

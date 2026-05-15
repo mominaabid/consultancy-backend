@@ -204,7 +204,7 @@ export async function counsellorLogin(req, res) {
     const token = jwt.sign(
       { id: user.id, role: user.role, name: user.name, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: "15s" },
+      { expiresIn: "7d" },
     );
 
     res.json({

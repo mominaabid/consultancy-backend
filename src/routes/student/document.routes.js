@@ -1,4 +1,3 @@
-// src/routes/student/document.routes.js
 import express from 'express';
 import multer from 'multer';
 import auth from '../../middleware/auth.middleware.js';

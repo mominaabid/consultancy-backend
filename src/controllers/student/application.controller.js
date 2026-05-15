@@ -1,4 +1,3 @@
-// src/controllers/student/application.controller.js
 import db from '../../models/mysql/index.js';
 
 const { Application, Document, Sequelize } = db;
@@ -85,5 +84,3 @@ export const getApplication = async (req, res) => {
   }
 };
 
-// ─── STUDENT CANNOT ADD/EDIT/DELETE APPLICATIONS ────────────────────────────
-// These functions are intentionally removed

@@ -77,6 +77,10 @@ export const Counsellor = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    profile_image: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   },
   {
     tableName: "counsellors",

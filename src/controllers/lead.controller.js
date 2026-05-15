@@ -4,48 +4,10 @@ import { sendPasswordSetupEmail } from "../services/email.service.js";
 import { logActivity } from "../services/activityLog.service.js";
 import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js"; // ✅ merged
 import Conversation from "../models/mongo/Conversation.js";
+import sseManager from "../utils/sseManager.js";
 
 const { Lead, User, PasswordResetToken } = db;
 
-// ─── POST /admin/leads ────────────────────────────────────────────────────────
-// src/controllers/admin/lead.controller.js
-
-// export async function createLead(req, res) {
-//   try {
-//     // const data = {
-//     //   ...req.body,
-//     //   counsellor_id:
-//     //     req.body.counsellor_id === "" || !req.body.counsellor_id
-//     //       ? null
-//     //       : Number(req.body.counsellor_id),
-//     // };
-
-//     const data = {
-//       ...req.body,
-//       counsellor_id:
-//         req.body.counsellor_id === "" || !req.body.counsellor_id
-//           ? (req.user.role === 'counsellor' ? req.user.id : null)  // ← Auto-assign for counsellor
-//           : Number(req.body.counsellor_id),
-//     };
-
-//     const lead = await Lead.create(data);
-
-//     await logActivity({
-//       leadId: lead.id,
-//       actionType: "lead_created",
-//       toValue: lead.status,
-//       note: `Lead created via ${lead.source || "unknown"} · Phone: ${lead.phone || "—"} · Country: ${lead.preferred_country || "—"}`,
-//       performedBy: req.user.id,
-//       performedByRole: req.user.role,
-//       performedByName: req.user.name,
-//     });
-
-//     res.status(201).json(lead);
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: error.message });
-//   }
-// }
 export async function createLead(req, res) {
   try {
     const data = {
@@ -180,37 +142,93 @@ export async function updateLead(req, res) {
 }
 
 // ─── PUT /admin/leads/:id/assign ──────────────────────────────────────────────
+// export async function assignCounsellor(req, res) {
+//   try {
+//     console.log("🔥 ASSIGN API HIT");
+//     console.log("BODY:", req.body);
+//     console.log("COUNCELLOR ID:", req.body.counsellor_id);
+
+//     const newCounsellorId = req.body.counsellor_id
+//       ? Number(req.body.counsellor_id)
+//       : null;
+
+//     console.log("PARSED ID:", newCounsellorId);
+
+//     const lead = await Lead.findByPk(req.params.id);
+
+//     if (!lead) {
+//       return res.status(404).json({ message: "Lead not found." });
+//     }
+
+//     const prevCounsellor = lead.counsellor_id
+//       ? await User.findByPk(lead.counsellor_id, {
+//           attributes: ["name"],
+//         })
+//       : null;
+
+//     const newCounsellor = newCounsellorId
+//       ? await User.findByPk(newCounsellorId, {
+//           attributes: ["name", "email"],
+//         })
+//       : null;
+
+//     console.log("FOUND COUNSELLOR:", newCounsellor);
+
+//     lead.counsellor_id = newCounsellorId;
+//     await lead.save();
+
+//     await logActivity({
+//       leadId: lead.id,
+//       actionType: "counsellor_assigned",
+//       fromValue: prevCounsellor?.name || "Unassigned",
+//       toValue: newCounsellor?.name || "Unassigned",
+//       note: `Counsellor changed from "${prevCounsellor?.name || "Unassigned"}" to "${newCounsellor?.name || "Unassigned"}"`,
+//       performedBy: req.user.id,
+//       performedByRole: req.user.role,
+//       performedByName: req.user.name,
+//     });
+
+//     // ✅ send email on assignment
+//     if (newCounsellor?.email) {
+//       try {
+//         const result = await sendLeadAssignmentEmail({
+//           counsellorEmail: newCounsellor.email,
+//           counsellorName: newCounsellor.name,
+//           lead: lead.toJSON(),
+//         });
+
+//         console.log("✅ EMAIL RESULT:", result);
+//       } catch (err) {
+//         console.error("❌ Background email error:", err);
+//       }
+//     } else {
+//       console.log("❌ No counsellor email found");
+//     }
+
+//     res.json(lead);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: error.message });
+//   }
+// }
+
 export async function assignCounsellor(req, res) {
   try {
     console.log("🔥 ASSIGN API HIT");
-    console.log("BODY:", req.body);
-    console.log("COUNCELLOR ID:", req.body.counsellor_id);
-
     const newCounsellorId = req.body.counsellor_id
       ? Number(req.body.counsellor_id)
       : null;
 
-    console.log("PARSED ID:", newCounsellorId);
-
     const lead = await Lead.findByPk(req.params.id);
-
-    if (!lead) {
-      return res.status(404).json({ message: "Lead not found." });
-    }
+    if (!lead) return res.status(404).json({ message: "Lead not found." });
 
     const prevCounsellor = lead.counsellor_id
-      ? await User.findByPk(lead.counsellor_id, {
-          attributes: ["name"],
-        })
+      ? await User.findByPk(lead.counsellor_id, { attributes: ["name"] })
       : null;
 
     const newCounsellor = newCounsellorId
-      ? await User.findByPk(newCounsellorId, {
-          attributes: ["name", "email"],
-        })
+      ? await User.findByPk(newCounsellorId, { attributes: ["name", "email"] })
       : null;
-
-    console.log("FOUND COUNSELLOR:", newCounsellor);
 
     lead.counsellor_id = newCounsellorId;
     await lead.save();
@@ -226,21 +244,34 @@ export async function assignCounsellor(req, res) {
       performedByName: req.user.name,
     });
 
-    // ✅ send email on assignment
+    // Send email to counsellor
     if (newCounsellor?.email) {
       try {
-        const result = await sendLeadAssignmentEmail({
+        await sendLeadAssignmentEmail({
           counsellorEmail: newCounsellor.email,
           counsellorName: newCounsellor.name,
           lead: lead.toJSON(),
         });
-
-        console.log("✅ EMAIL RESULT:", result);
       } catch (err) {
-        console.error("❌ Background email error:", err);
+        console.error("Email error:", err);
       }
-    } else {
-      console.log("❌ No counsellor email found");
+    }
+
+    // 🟢 NEW: Send SSE real-time notification
+    if (newCounsellorId && newCounsellor) {
+      const event = {
+        type: "lead_assigned",
+        message: `A new lead "${lead.name}" has been assigned to you.`,
+        leadId: lead.id,
+        leadName: lead.name,
+        counsellorId: newCounsellorId,
+        assignedBy: req.user.name,
+        assignedByRole: req.user.role,
+      };
+      const sent = sseManager.sendToUser(newCounsellorId.toString(), event);
+      if (sent)
+        console.log(`SSE lead_assigned sent to counsellor ${newCounsellorId}`);
+      else console.log(`Counsellor ${newCounsellorId} not connected via SSE`);
     }
 
     res.json(lead);
@@ -250,9 +281,6 @@ export async function assignCounsellor(req, res) {
   }
 }
 
-// ─── PUT /admin/leads/:id/stage ───────────────────────────────────────────────
-// PUT /admin/leads/:id/stage
-// PUT /admin/leads/:id/stage
 export async function updateStage(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);

@@ -11,26 +11,6 @@ export async function createCounsellor(req, res) {
     const { name, father_name, email, phone, cnic, address, role, status } =
       req.body;
 
-    // const existingUser = await User.findOne({
-    //   where: {
-    //     email,
-    //     is_deleted: false,
-    //   },
-    // });
-
-    // const existingCounsellor = await Counsellor.findOne({
-    //   where: {
-    //     email,
-    //     is_deleted: false,
-    //   },
-    // });
-
-    // if (existingUser || existingCounsellor) {
-    //   return res.status(409).json({
-    //     message: "This email is already registered.",
-    //   });
-    // }
-
     const user = await User.create({
       name,
       email,
@@ -89,39 +69,6 @@ export async function createCounsellor(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
-
-// export async function getAllCounsellors(req, res) {
-//   try {
-//     // const counsellors = await Counsellor.findAll({
-//     //   where: { is_deleted: false },
-//     //   order: [["id", "DESC"]],
-//     // });
-
-//     const counsellors = await Counsellor.findAll({
-//       where: { is_deleted: false, status: "active" },
-//       include: [{ model: User, as: "user", attributes: ["id"] }], // assuming you add association
-//     });
-//     res.json(counsellors);
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: error.message });
-//   }
-// }
-
-// const counsellors = await Counsellor.findAll({
-//   where: { is_deleted: false, status: "active" },
-//   attributes: {
-//     include: [
-//       [
-//         db.sequelize.literal(`(
-//         SELECT COUNT(*) FROM leads
-//         WHERE leads.counsellor_id = Counsellor.user_id
-//       )`),
-//         "assigned_leads",
-//       ],
-//     ],
-//   },
-// });
 
 export async function getAllCounsellors(req, res) {
   const counsellors = await Counsellor.findAll({
@@ -190,48 +137,6 @@ export async function updateCounsellor(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
-
-// export async function deleteCounsellor(req, res) {
-//   try {
-//     const counsellor = await Counsellor.findByPk(req.params.id);
-//     if (!counsellor)
-//       return res.status(404).json({ message: "Counsellor not found" });
-
-//     await counsellor.update({ is_deleted: true, status: "inactive" });
-
-//     await User.update(
-//       { is_active: false, is_deleted: true },
-//       {
-//         where: {
-//           email: counsellor.email,
-//           role: "counsellor",
-//           is_deleted: false,
-//         },
-//       },
-//     );
-
-//     await Lead.update(
-//       { counsellor_id: null },
-//       { where: { counsellor_id: counsellor.id } },
-//     );
-
-//     if (req.user) {
-//       await logActivity({
-//         leadId: null,
-//         actionType: "counsellor_deleted",
-//         note: `Counsellor "${counsellor.name}" soft deleted`,
-//         performedBy: req.user.id,
-//         performedByRole: req.user.role,
-//         performedByName: req.user.name,
-//       });
-//     }
-
-//     res.json({ message: "Counsellor deleted successfully" });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: error.message });
-//   }
-// }
 
 export async function deleteCounsellor(req, res) {
   try {

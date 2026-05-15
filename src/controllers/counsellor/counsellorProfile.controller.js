@@ -5,6 +5,40 @@ import { Op } from "sequelize";
 
 const normalizeCNIC = (cnic) => cnic.replace(/-/g, "");
 
+export const uploadProfileImage = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No image file provided" });
+    }
+
+    const relativePath = `uploads/${req.file.filename}`;
+
+    const counsellor = await Counsellor.findOne({
+      where: { user_id: userId, is_deleted: false },
+    });
+
+    if (!counsellor) {
+      return res.status(404).json({ message: "Counsellor profile not found" });
+    }
+
+    await counsellor.update({ profile_image: relativePath });
+
+    const fullUrl = `${req.protocol}://${req.get("host")}/${relativePath}`;
+    return res.status(200).json({
+      message: "Profile image uploaded successfully",
+      profilePictureUrl: fullUrl,
+      profilePicturePath: relativePath,
+    });
+  } catch (error) {
+    console.error("Upload profile image error:", error);
+    return res
+      .status(500)
+      .json({ message: "Failed to upload profile image" });
+  }
+};
+
 export const getCounsellorProfile = async (req, res) => {
   try {
     const counsellor = await Counsellor.findOne({
@@ -22,6 +56,11 @@ export const getCounsellorProfile = async (req, res) => {
     const response = counsellor.toJSON();
     response.createdAt = counsellor.createdAt;
     response.updatedAt = counsellor.updatedAt;
+
+    // Add full URL for profile image
+    if (response.profile_image) {
+      response.profilePictureUrl = `${req.protocol}://${req.get("host")}/${response.profile_image}`;
+    }
 
     res.json(response);
   } catch (error) {
