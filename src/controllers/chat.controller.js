@@ -7,6 +7,7 @@ import { Op } from 'sequelize';
 const { Lead, User } = db;
 
 // POST /chat/messages/send
+// POST /chat/messages/send
 export async function sendMessage(req, res) {
   try {
     const { conversationId, content } = req.body;
@@ -19,13 +20,11 @@ export async function sendMessage(req, res) {
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) return res.status(404).json({ message: 'Conversation not found.' });
 
-    // Verify user belongs to this conversation
-    if (conversation.student_id    !== user.id &&
-        conversation.counsellor_id !== user.id) {
+    if (conversation.student_id !== user.id && conversation.counsellor_id !== user.id) {
       return res.status(403).json({ message: 'Access denied.' });
     }
 
-    // Save to MongoDB
+    // Save Message
     const message = await Message.create({
       conversation_id: conversationId,
       sender_id:       user.id,
@@ -33,18 +32,17 @@ export async function sendMessage(req, res) {
       sender_name:     user.name,
       content:         content.trim(),
       type:            'text',
-      is_read:         false,
     });
 
-    const isStudent       = user.role === 'student';
-    const recipientUnread = isStudent ? 'counsellor_unread' : 'student_unread';
-    const recipientId     = isStudent ? conversation.counsellor_id : conversation.student_id;
+    const isStudent = user.role === 'student';
+    const recipientId = isStudent ? conversation.counsellor_id : conversation.student_id;
+    const unreadField = isStudent ? 'counsellor_unread' : 'student_unread';
 
-    // Update conversation
+    // Update Conversation
     await Conversation.findByIdAndUpdate(conversationId, {
       last_message:    content.trim(),
       last_message_at: new Date(),
-      $inc: { [recipientUnread]: 1 },
+      $inc: { [unreadField]: 1 },
     });
 
     const messageData = {
@@ -54,52 +52,39 @@ export async function sendMessage(req, res) {
       sender_role:     user.role,
       sender_name:     user.name,
       content:         message.content,
-      is_read:         false,
       createdAt:       message.createdAt,
     };
 
-    // Publish to Ably channel — both users subscribed to this channel
+    const fullMessagePayload = { message: messageData };
+
+    // ==================== CRITICAL REAL-TIME BROADCASTS ====================
+
+    // 1. Send to Conversation Channel → Both users should see message instantly
     await publishToChannel(
       `conversation:${conversationId}`,
       'new_message',
-      messageData
+      fullMessagePayload
     );
 
-    // Also notify recipient on their personal channel
-    await publishToChannel(
-      `user:${recipientId}`,
-      'new_message_notification',
-      {
-        conversationId,
-        senderName: user.name,
-        senderRole: user.role,
-        preview:    content.trim().slice(0, 60),
-      }
-    );
+    // 2. Send notification to Recipient (for sidebar update)
+    await publishToChannel(`user:${recipientId}`, 'new_message_notification', {
+      conversationId,
+      senderName: user.name,
+      senderRole: user.role,
+      preview: content.trim().slice(0, 60),
+    });
 
-    // Send email notification
-    try {
-      const recipientUser = await User.findOne({
-        where:      { id: Number(recipientId) },
-        attributes: ['name', 'email'],
-      });
-
-      if (recipientUser?.email) {
-        await sendChatNotificationEmail({
-          recipientName:  recipientUser.name,
-          recipientEmail: recipientUser.email,
-          senderName:     user.name,
-          senderRole:     user.role,
-          messagePreview: content.trim().slice(0, 100),
-          conversationId,
-        });
-        console.log(`✅ Email sent to ${recipientUser.email}`);
-      }
-    } catch (emailErr) {
-      console.error('⚠️ Email failed:', emailErr.message);
-    }
+    // 3. Send notification to Sender (for their own sidebar update)
+    await publishToChannel(`user:${user.id}`, 'new_message_notification', {
+      conversationId,
+      senderName: user.name,
+      senderRole: user.role,
+      preview: content.trim().slice(0, 60),
+      isFromMe: true
+    });
 
     res.status(201).json(messageData);
+
   } catch (error) {
     console.error('sendMessage error:', error);
     res.status(500).json({ message: error.message });
@@ -288,8 +273,24 @@ export async function markAsRead(req, res) {
     );
 
     // Reset unread count
-    const unreadField = role === 'student' ? 'student_unread' : 'counsellor_unread';
-    await Conversation.findByIdAndUpdate(conversationId, { [unreadField]: 0 });
+let unreadField = '';
+
+if (role?.toLowerCase() === 'student') {
+  unreadField = 'student_unread';
+}
+
+if (
+  role?.toLowerCase() === 'counsellor' ||
+  role?.toLowerCase() === 'counselor'
+) {
+  unreadField = 'counsellor_unread';
+}
+    if (unreadField) {
+  await Conversation.findByIdAndUpdate(
+    conversationId,
+    { [unreadField]: 0 }
+  );
+}
 
     res.json({ message: 'Messages marked as read.' });
   } catch (error) {

@@ -15,13 +15,19 @@ export async function publishToChannel(channelName, eventName, data) {
 // ─────────────────────────────
 // TOKEN GENERATION (NEW SAFE METHOD)
 // ─────────────────────────────
-export function generateAblyToken(req, res) {
-  const tokenRequest = ably.auth.createTokenRequest({
-    clientId: String(req.user.id),
-    capability: {
-      "*": ["subscribe", "publish", "presence"]
-    }
-  });
+export async function generateAblyToken(req, res) {
+  try {
+    const tokenRequest = await ably.auth.createTokenRequest({
+      clientId: String(req.user.id),
+      capability: {
+        '*': ['subscribe', 'publish', 'presence'],
+      },
+    });
 
-  res.json(tokenRequest);
+    console.log('🔑 Token generated for user:', req.user.id, tokenRequest);
+    res.json(tokenRequest); // now sends the actual token object
+  } catch (err) {
+    console.error('❌ Token generation failed:', err);
+    res.status(500).json({ message: err.message });
+  }
 }

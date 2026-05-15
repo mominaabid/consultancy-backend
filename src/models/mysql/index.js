@@ -141,6 +141,16 @@ Document.belongsTo(User, {
   as: 'uploader',
   foreignKey: 'uploaded_by_id'
 });
+// Add these two lines with your other associations
+LeadActivityLog.belongsTo(User, {
+  foreignKey: "performed_by",
+  as: "performer",
+});
+
+User.hasMany(LeadActivityLog, {
+  foreignKey: "performed_by",
+  as: "activityLogs",
+});
 
 // ============================================
 // EXPORTS
