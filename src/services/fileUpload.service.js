@@ -1,26 +1,25 @@
-
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Smart directory selection for Vercel + Local
 const getUploadsDir = () => {
-  if (process.env.NODE_ENV === 'production') {
-    return '/tmp/uploads';           // Vercel writable directory
+  if (process.env.NODE_ENV === "production") {
+    return "/tmp/uploads"; // Vercel writable directory
   }
-  return path.join(__dirname, '../../uploads'); // Local
+  return path.join(__dirname, "../../uploads"); // Local
 };
 
 const UPLOADS_DIR = getUploadsDir();
-const DOCUMENTS_DIR = path.join(UPLOADS_DIR, 'documents');
-const PAYMENTS_DIR = path.join(UPLOADS_DIR, 'payments');
+const DOCUMENTS_DIR = path.join(UPLOADS_DIR, "documents");
+const PAYMENTS_DIR = path.join(UPLOADS_DIR, "payments");
 
 // Ensure directories exist
 const ensureDirectories = () => {
-  [DOCUMENTS_DIR, PAYMENTS_DIR].forEach(dir => {
+  [DOCUMENTS_DIR, PAYMENTS_DIR].forEach((dir) => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -36,12 +35,21 @@ export const uploadFile = async (file, studentId, docType) => {
     const randomStr = Math.random().toString(36).substring(7);
     const ext = path.extname(file.originalname);
     const filename = `${studentId}_${docType}_${timestamp}_${randomStr}${ext}`;
-    
+
     const filepath = path.join(DOCUMENTS_DIR, filename);
-    
+
     fs.writeFileSync(filepath, file.buffer);
-    
-    const baseUrl = process.env.BASE_URL || 'http://localhost:3001';
+
+    // const baseUrl = process.env.BASE_URL || 'http://localhost:3001';
+
+    const baseUrl =
+      process.env.BASE_URL ||
+      `${
+        process.env.NODE_ENV === "production"
+          ? "https://consultancy-backend-av89.vercel.app"
+          : "http://localhost:3001"
+      }`;
+
     const fileUrl = `${baseUrl}/uploads/documents/${filename}`;
 
     return {
@@ -53,8 +61,8 @@ export const uploadFile = async (file, studentId, docType) => {
       filePath: filepath,
     };
   } catch (error) {
-    console.error('File upload error:', error);
-    throw new Error('Failed to upload file');
+    console.error("File upload error:", error);
+    throw new Error("Failed to upload file");
   }
 };
 
@@ -65,12 +73,21 @@ export const uploadPaymentProof = async (file, userId, paymentId) => {
     const randomStr = Math.random().toString(36).substring(7);
     const ext = path.extname(file.originalname);
     const filename = `payment_${userId}_${paymentId}_${timestamp}_${randomStr}${ext}`;
-    
+
     const filepath = path.join(PAYMENTS_DIR, filename);
-    
+
     fs.writeFileSync(filepath, file.buffer);
-    
-    const baseUrl = process.env.BASE_URL || 'http://localhost:3001';
+
+    // const baseUrl = process.env.BASE_URL || "http://localhost:3001";
+
+    const baseUrl =
+      process.env.BASE_URL ||
+      `${
+        process.env.NODE_ENV === "production"
+          ? "https://consultancy-backend-av89.vercel.app"
+          : "http://localhost:3001"
+      }`;
+
     const fileUrl = `${baseUrl}/uploads/payments/${filename}`;
 
     return {
@@ -82,21 +99,21 @@ export const uploadPaymentProof = async (file, userId, paymentId) => {
       filePath: filepath,
     };
   } catch (error) {
-    console.error('Payment proof upload error:', error);
-    throw new Error('Failed to upload payment proof');
+    console.error("Payment proof upload error:", error);
+    throw new Error("Failed to upload payment proof");
   }
 };
 
 // Delete file
-export const deleteFile = async (fileKey, type = 'document') => {
+export const deleteFile = async (fileKey, type = "document") => {
   try {
-    const directory = type === 'payment' ? PAYMENTS_DIR : DOCUMENTS_DIR;
+    const directory = type === "payment" ? PAYMENTS_DIR : DOCUMENTS_DIR;
     const filepath = path.join(directory, fileKey);
-    
+
     if (fs.existsSync(filepath)) {
       fs.unlinkSync(filepath);
     }
   } catch (error) {
-    console.error('File deletion error:', error);
+    console.error("File deletion error:", error);
   }
 };
