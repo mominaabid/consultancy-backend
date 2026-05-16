@@ -87,7 +87,6 @@ export async function setTotalFees(req, res) {
   }
 }
 
-// ─── GET OFFER LETTER STUDENTS ────────────────────────────────────────────
 export async function getOfferLetterStudents(req, res) {
   try {
     const applications = await Application.findAll({
@@ -105,12 +104,10 @@ export async function getOfferLetterStudents(req, res) {
           attributes: ["id", "name", "email"],
         });
 
-        // Get fee record from payments table
         const feeRecord = await Payment.findOne({
           where: { application_id: app.id, is_deleted: false },
         });
 
-        // Get all completed payments for this application
         const payments = await Payment.findAll({
           where: {
             application_id: app.id,
@@ -129,6 +126,9 @@ export async function getOfferLetterStudents(req, res) {
         const finalFees = feeRecord?.final_fees || totalFees;
         const remaining = finalFees - totalPaid;
 
+        // ✅ Updated status: "completed" or "in-progress"
+        const payment_status = remaining <= 0 ? "completed" : "in-progress";
+
         return {
           id: app.id,
           user_id: app.user_id,
@@ -141,6 +141,7 @@ export async function getOfferLetterStudents(req, res) {
           final_fees: finalFees,
           total_paid: totalPaid,
           remaining_amount: remaining > 0 ? remaining : 0,
+          payment_status, // ✅ now "completed" or "in-progress"
           payments_count: payments.length,
           status: app.status,
         };
@@ -166,6 +167,7 @@ export async function addPayment(req, res) {
       reference_no,
       transaction_id,
       notes,
+      status,
     } = req.body;
 
     console.log("Adding payment:", { user_id, application_id, amount, mode });
@@ -188,7 +190,7 @@ export async function addPayment(req, res) {
       amount: parseFloat(amount),
       payment_type: payment_type || "consultancy_fee",
       mode: mode,
-      status: "completed",
+      status: status,
       reference_no: reference_no || null,
       transaction_id: transaction_id || null,
       recorded_by: req.user.id,
@@ -238,6 +240,8 @@ export async function getAllPayments(req, res) {
     // Filter out fee records (amount = 0) and show only actual payments
     const actualPayments = payments.filter((p) => p.amount > 0);
 
+    
+
     const summary = {
       total_amount: actualPayments
         .filter((p) => p.status === "completed")
@@ -245,8 +249,12 @@ export async function getAllPayments(req, res) {
       completed_count: actualPayments.filter((p) => p.status === "completed")
         .length,
       pending_count: actualPayments.filter(
-        (p) => p.status === "awaiting_verification",
+        (p) =>
+          p.status === "awaiting_verification" || p.status === "in-progress",
       ).length,
+      in_progress_count: actualPayments.filter(
+        (p) => p.status === "in-progress",
+      ).length, // ✅ new
       rejected_count: actualPayments.filter((p) => p.status === "rejected")
         .length,
     };
@@ -392,12 +400,53 @@ export async function getPaymentProof(req, res) {
 }
 
 // ─── GET STUDENT PAYMENTS ──────────────────────────────────────────────────
+// export async function getStudentPayments(req, res) {
+//   try {
+//     const { studentId } = req.params;
+
+//     const payments = await Payment.findAll({
+//       where: { user_id: studentId, is_deleted: false },
+//       include: [
+//         {
+//           model: Application,
+//           as: "application",
+//           attributes: ["id", "target_university", "course", "status"],
+//         },
+//         {
+//           model: User,
+//           as: "recordedBy",
+//           attributes: ["id", "name"],
+//         },
+//       ],
+//       order: [["paid_at", "DESC"]],
+//     });
+
+//     const totalPaid = payments
+//       .filter((p) => p.status === "completed")
+//       .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+
+//     res.json({
+//       success: true,
+//       payments: payments.filter((p) => p.amount > 0),
+//       total_paid: totalPaid,
+//       total_count: payments.length,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: error.message });
+//   }
+// }
+
 export async function getStudentPayments(req, res) {
   try {
-    const { studentId } = req.params;
+    const { studentId, applicationId } = req.params;
 
     const payments = await Payment.findAll({
-      where: { user_id: studentId, is_deleted: false },
+      where: {
+        user_id: studentId,
+        application_id: applicationId,
+        is_deleted: false,
+      },
       include: [
         {
           model: Application,
@@ -413,15 +462,18 @@ export async function getStudentPayments(req, res) {
       order: [["paid_at", "DESC"]],
     });
 
-    const totalPaid = payments
+    // Sirf actual payments
+    const actualPayments = payments.filter((p) => p.amount > 0);
+
+    const totalPaid = actualPayments
       .filter((p) => p.status === "completed")
       .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
     res.json({
       success: true,
-      payments: payments.filter((p) => p.amount > 0),
+      payments: actualPayments,
       total_paid: totalPaid,
-      total_count: payments.length,
+      total_count: actualPayments.length,
     });
   } catch (error) {
     console.error(error);

@@ -2,7 +2,7 @@ import db from "../../models/mysql/index.js";
 import { uploadFile, deleteFile } from "../../services/fileUpload.service.js";
 import { logActivity } from "../../services/activityLog.service.js";
 
-const { Document, Lead, Application } = db;
+const { Document, Lead, Application, MobileDoc } = db;
 
 const ALLOWED_MIMES = [
   "image/jpeg",
@@ -80,6 +80,98 @@ export async function getMyDocuments(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// GET ALL MOBILE DOC TYPES
+// ─────────────────────────────────────────────────────────────
+export async function getMobileDocs(req, res) {
+  try {
+    const mobileDocs = await MobileDoc.findAll({
+      order: [["id", "ASC"]],
+    });
+
+    console.log("Docs found:", mobileDocs);
+
+    res.status(200).json({
+      success: true,
+      count: mobileDocs.length,
+      data: mobileDocs,
+    });
+  } catch (error) {
+    console.error("Get Mobile Docs Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+// export const getDocumentStats = async (req, res) => {
+//   try {
+//     const docs = await Document.findAll({
+//       attributes: ["status"],
+//     });
+
+//     const stats = {
+//       total: docs.length,
+//       verified: 0,
+//       pending: 0,
+//       review: 0,
+//       rejected: 0,
+//     };
+
+//     docs.forEach((doc) => {
+//       const status = doc.status;
+
+//       if (stats.hasOwnProperty(status)) {
+//         stats[status] += 1;
+//       }
+//     });
+
+//     return res.status(200).json(stats);
+//   } catch (error) {
+//     console.error("getDocumentStats error:", error);
+//     return res.status(500).json({
+//       message: "Failed to fetch document stats",
+//     });
+//   }
+// };
+
+export const getDocumentStats = async (req, res) => {
+  try {
+    const [docs, mobileDocs, applications] = await Promise.all([
+      Document.findAll({ attributes: ["status"] }),
+      MobileDoc.findAll(),
+      Application.findAll({ where: {} }),
+    ]);
+
+    const stats = {
+      totalUploaded: docs.length,
+      verified: 0,
+      pending: 0,
+      review: 0,
+      rejected: 0,
+      totalRequired: applications.length * mobileDocs.length, // 👈 dynamic magic
+      applications: applications.length,
+      docTypes: mobileDocs.length,
+    };
+
+    docs.forEach((doc) => {
+      const status = doc.status;
+      if (stats.hasOwnProperty(status)) {
+        stats[status] += 1;
+      }
+    });
+
+    return res.status(200).json(stats);
+  } catch (error) {
+    console.error("getDocumentStats error:", error);
+    return res.status(500).json({
+      message: "Failed to fetch document stats",
+    });
+  }
+};
 
 export async function uploadDocument(req, res) {
   try {

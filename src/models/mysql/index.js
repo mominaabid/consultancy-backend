@@ -8,6 +8,7 @@ import LeadActivityLog from "./LeadActivityLog.js";
 import Document from "./Document.js";
 import Application from "./Application.js";
 import Payment from "./Payment.js";
+import MobileDoc from "./tbl_mobile_docs.js";
 
 // ============================================
 // ASSOCIATIONS
@@ -166,6 +167,7 @@ const db = {
   Document,
   Application,
   Payment,
+  MobileDoc,
 };
 
 export default db;

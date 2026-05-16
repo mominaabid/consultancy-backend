@@ -1,6 +1,6 @@
 // src/routes/admin/payment.routes.js
-import express from 'express';
-import auth from '../../middleware/auth.middleware.js';
+import express from "express";
+import auth from "../../middleware/auth.middleware.js";
 import {
   setTotalFees,
   getOfferLetterStudents,
@@ -10,19 +10,23 @@ import {
   deletePayment,
   getPaymentProof,
   addPayment,
-} from '../../controllers/admin/payment.controller.js';
+  getStudentPayments,
+} from "../../controllers/admin/payment.controller.js";
 
 const router = express.Router();
 
 router.use(auth);
 
-router.post('/set-fees', setTotalFees);
-router.post('/', addPayment);  // ← ADD THIS ROUTE
-router.get('/offer-letter-students', getOfferLetterStudents);
-router.get('/pending-verifications', getPendingVerifications);
-router.put('/verify/:id', verifyPayment);
-router.get('/', getAllPayments);
-router.delete('/:id', deletePayment);
+router.post("/set-fees", setTotalFees);
+router.post("/", addPayment); // ← ADD THIS ROUTE
+router.get("/offer-letter-students", getOfferLetterStudents);
+router.get("/pending-verifications", getPendingVerifications);
+router.put("/verify/:id", verifyPayment);
+router.get("/", getAllPayments);
+router.delete("/:id", deletePayment);
 // src/routes/admin/payment.routes.js - Add this route
-router.get('/:id/proof', getPaymentProof);
+router.get("/:id/proof", getPaymentProof);
+router.get("/student/:studentId/application/:applicationId", getStudentPayments);
+
+
 export default router;
