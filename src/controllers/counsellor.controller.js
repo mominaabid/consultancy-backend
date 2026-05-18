@@ -47,7 +47,6 @@ export async function createCounsellor(req, res) {
       setupLink,
     });
 
-    // 5. Log activity
     if (req.user) {
       await logActivity({
         leadId: null,
@@ -145,13 +144,11 @@ export async function deleteCounsellor(req, res) {
       return res.status(404).json({ message: "Counsellor not found" });
     }
 
-    // Soft delete the counsellor
     await counsellor.update({
       is_deleted: true,
       status: "inactive",
     });
 
-    // Try to update the associated user, but don't fail if user doesn't exist
     try {
       const user = await User.findOne({
         where: {
@@ -168,16 +165,13 @@ export async function deleteCounsellor(req, res) {
       }
     } catch (userError) {
       console.warn("Could not update associated user:", userError.message);
-      // Continue with deletion even if user update fails
     }
 
-    // Unassign leads from this counsellor (optional, based on your needs)
     await Lead.update(
       { counsellor_id: null },
       { where: { counsellor_id: counsellor.id } },
     );
 
-    // Log activity if user is authenticated
     if (req.user) {
       await logActivity({
         leadId: null,

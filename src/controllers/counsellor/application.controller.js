@@ -16,14 +16,12 @@ import {
 
 const { Application, Lead, User, Document } = db;
 
-// ─── EMAIL NOTIFICATION HELPER ──────────────────────────────────────────────
 const sendStatusUpdateEmail = async (
   application,
   newStatus,
   oldStatus = null,
 ) => {
   try {
-    // Fetch student user details
     const student = await db.User.findByPk(application.user_id, {
       attributes: ["id", "name", "email"],
     });
@@ -41,7 +39,6 @@ const sendStatusUpdateEmail = async (
     const course = application.course || "your course";
     const appId = application.id;
 
-    // Map status to email function
     switch (newStatus) {
       case "inquiry":
         await sendApplicationInquiryEmail({
@@ -80,7 +77,6 @@ const sendStatusUpdateEmail = async (
         });
         break;
       case "offer letter not received":
-        // Optionally pass reason from counsellor_notes or a default
         await sendOfferNotReceivedEmail({
           name,
           email,
@@ -109,7 +105,6 @@ const sendStatusUpdateEmail = async (
         });
         break;
       case "reject":
-        // Use counsellor_notes as reason if available
         const reason =
           application.counselor_notes ||
           "The application did not meet the requirements.";
@@ -132,11 +127,9 @@ const sendStatusUpdateEmail = async (
       `❌ Failed to send status email for status ${newStatus}:`,
       err.message,
     );
-    // Do not throw – email failure should not break the main operation
   }
 };
 
-// ─── GET STUDENTS WITH APPLICATIONS (admin gets ALL leads) ─────────────────
 export const getStudentsWithApplications = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -176,21 +169,7 @@ export const getStudentsWithApplications = async (req, res) => {
       email: lead.email,
       phone: lead.phone,
       status: lead.status,
-      // applications:
-      //   lead.applications?.map((app) => ({
-      //     id: app.id,
-      //     target_university: app.target_university,
-      //     course: app.course,
-      //     status: app.status,
-      //     created_at: app.created_at,
-      //     student_id: lead.id,
-      //     user_id: lead.user_id,
-      //     student_name: lead.name,
-      //     student_email: lead.email,
-      //     full_name: app.full_name,
-      //     counselor_notes: app.counselor_notes,
-      //     documents: app.documents || [],
-      //   })) || [],
+      
 
       applications: lead.applications?.map((app) => ({
         id: app.id,
@@ -370,7 +349,6 @@ export const createApplication = async (req, res) => {
       performedByName: req.user.name,
     });
 
-    // ✅ Send SSE notification to student
     const student = await User.findByPk(lead.user_id, {
       attributes: ["id", "name", "email"],
     });
@@ -397,85 +375,7 @@ export const createApplication = async (req, res) => {
   }
 };
 
-// export const updateApplication = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const isAdmin = req.user?.role === "admin";
-//     const application = await Application.findByPk(id);
-//     if (!application)
-//       return res.status(404).json({ message: "Application not found" });
 
-//     if (!isAdmin) {
-//       const lead = await Lead.findOne({
-//         where: { id: application.user_id, counsellor_id: req.user.id },
-//       });
-//       if (!lead)
-//         return res
-//           .status(403)
-//           .json({ message: "Access denied - Application not yours" });
-//     }
-
-//     // Store old values for comparison
-//     const oldStatus = application.status;
-//     const oldUniversity = application.target_university;
-//     const oldCourse = application.course;
-
-//     await application.update(req.body);
-
-//     // Send email if status changed
-//     if (req.body.status && req.body.status !== oldStatus) {
-//       await sendStatusUpdateEmail(application, req.body.status, oldStatus);
-//     }
-
-//     await logActivity({
-//       leadId: application.user_id,
-//       actionType: "application_updated",
-//       note: `Application updated for ${application.target_university}`,
-//       performedBy: req.user.id,
-//       performedByRole: req.user.role,
-//       performedByName: req.user.name,
-//     });
-
-//     // Build meaningful notification message
-//     let changes = [];
-//     if (
-//       req.body.target_university &&
-//       req.body.target_university !== oldUniversity
-//     ) {
-//       changes.push(`university changed to ${req.body.target_university}`);
-//     }
-//     if (req.body.course && req.body.course !== oldCourse) {
-//       changes.push(`course changed to ${req.body.course}`);
-//     }
-//     if (req.body.status && req.body.status !== oldStatus) {
-//       changes.push(`status changed to ${req.body.status}`);
-//     }
-//     let message = `Your application was updated. ${changes.join(", ")}`;
-//     if (changes.length === 0) message = "Your application was updated.";
-
-//     // ✅ Send SSE notification to student
-//     const student = await User.findByPk(application.user_id, {
-//       attributes: ["id", "name", "email"],
-//     });
-//     if (student && student.id) {
-//       sseManager.sendToUser(student.id, {
-//         type: "application_updated",
-//         applicationId: application.id,
-//         message: message,
-//         timestamp: new Date().toISOString(),
-//       });
-//     }
-
-//     res.json({
-//       success: true,
-//       message: "Application updated successfully",
-//       data: application,
-//     });
-//   } catch (err) {
-//     console.error("Error updating application:", err);
-//     res.status(500).json({ message: "Error updating application" });
-//   }
-// };
 
 export const updateApplication = async (req, res) => {
   try {
@@ -486,9 +386,8 @@ export const updateApplication = async (req, res) => {
       return res.status(404).json({ message: "Application not found" });
     }
 
-    // 🛡️ Prevent user_id update – it should never change
     const updateData = { ...req.body };
-    delete updateData.user_id; // remove user_id from update payload
+    delete updateData.user_id; 
 
     if (!isAdmin) {
       const lead = await Lead.findOne({
@@ -507,14 +406,12 @@ export const updateApplication = async (req, res) => {
 
     await application.update(updateData);
 
-    // Send email if status changed
     if (req.body.status && req.body.status !== oldStatus) {
       await sendStatusUpdateEmail(application, req.body.status, oldStatus);
     }
 
-    // Log activity
     await logActivity({
-      leadId: application.user_id, // still using the correct user_id
+      leadId: application.user_id, 
       actionType: "application_updated",
       note: `Application updated for ${application.target_university}`,
       performedBy: req.user.id,
@@ -522,7 +419,6 @@ export const updateApplication = async (req, res) => {
       performedByName: req.user.name,
     });
 
-    // Send SSE notification
     const student = await User.findByPk(application.user_id, {
       attributes: ["id", "name", "email"],
     });
@@ -572,7 +468,6 @@ export const deleteApplication = async (req, res) => {
       if (!lead) return res.status(403).json({ message: "Access denied" });
     }
 
-    // ✅ Send SSE notification BEFORE deletion (so we have the data)
     const student = await User.findByPk(application.user_id, {
       attributes: ["id", "name", "email"],
     });

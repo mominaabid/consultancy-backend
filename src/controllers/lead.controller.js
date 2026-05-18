@@ -2,7 +2,7 @@ import crypto from "crypto";
 import db from "../models/mysql/index.js";
 import { sendPasswordSetupEmail } from "../services/email.service.js";
 import { logActivity } from "../services/activityLog.service.js";
-import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js"; // ✅ merged
+import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js";
 import Conversation from "../models/mongo/Conversation.js";
 import sseManager from "../utils/sseManager.js";
 
@@ -15,7 +15,7 @@ export async function createLead(req, res) {
       counsellor_id:
         req.body.counsellor_id === "" || !req.body.counsellor_id
           ? req.user.role === "counsellor"
-            ? req.user.id // ✅ auto assign
+            ? req.user.id 
             : null
           : Number(req.body.counsellor_id),
     };
@@ -32,7 +32,6 @@ export async function createLead(req, res) {
       performedByName: req.user.name,
     });
 
-    // ✅ Send email if counsellor assigned
     if (lead.counsellor_id) {
       const counsellorUser = await User.findOne({
         where: { id: lead.counsellor_id, role: "counsellor" },
@@ -55,7 +54,6 @@ export async function createLead(req, res) {
   }
 }
 
-// ─── GET /admin/leads ─────────────────────────────────────────────────────────
 export async function getAllLeads(req, res) {
   try {
     const where = { is_deleted: false };
@@ -77,7 +75,6 @@ export async function getAllLeads(req, res) {
   }
 }
 
-// ─── GET /admin/leads/:id ─────────────────────────────────────────────────────
 export async function getLeadById(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id, {
@@ -95,7 +92,6 @@ export async function getLeadById(req, res) {
   }
 }
 
-// ─── PUT /admin/leads/:id ─────────────────────────────────────────────────────
 export async function updateLead(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
@@ -141,76 +137,7 @@ export async function updateLead(req, res) {
   }
 }
 
-// ─── PUT /admin/leads/:id/assign ──────────────────────────────────────────────
-// export async function assignCounsellor(req, res) {
-//   try {
-//     console.log("🔥 ASSIGN API HIT");
-//     console.log("BODY:", req.body);
-//     console.log("COUNCELLOR ID:", req.body.counsellor_id);
 
-//     const newCounsellorId = req.body.counsellor_id
-//       ? Number(req.body.counsellor_id)
-//       : null;
-
-//     console.log("PARSED ID:", newCounsellorId);
-
-//     const lead = await Lead.findByPk(req.params.id);
-
-//     if (!lead) {
-//       return res.status(404).json({ message: "Lead not found." });
-//     }
-
-//     const prevCounsellor = lead.counsellor_id
-//       ? await User.findByPk(lead.counsellor_id, {
-//           attributes: ["name"],
-//         })
-//       : null;
-
-//     const newCounsellor = newCounsellorId
-//       ? await User.findByPk(newCounsellorId, {
-//           attributes: ["name", "email"],
-//         })
-//       : null;
-
-//     console.log("FOUND COUNSELLOR:", newCounsellor);
-
-//     lead.counsellor_id = newCounsellorId;
-//     await lead.save();
-
-//     await logActivity({
-//       leadId: lead.id,
-//       actionType: "counsellor_assigned",
-//       fromValue: prevCounsellor?.name || "Unassigned",
-//       toValue: newCounsellor?.name || "Unassigned",
-//       note: `Counsellor changed from "${prevCounsellor?.name || "Unassigned"}" to "${newCounsellor?.name || "Unassigned"}"`,
-//       performedBy: req.user.id,
-//       performedByRole: req.user.role,
-//       performedByName: req.user.name,
-//     });
-
-//     // ✅ send email on assignment
-//     if (newCounsellor?.email) {
-//       try {
-//         const result = await sendLeadAssignmentEmail({
-//           counsellorEmail: newCounsellor.email,
-//           counsellorName: newCounsellor.name,
-//           lead: lead.toJSON(),
-//         });
-
-//         console.log("✅ EMAIL RESULT:", result);
-//       } catch (err) {
-//         console.error("❌ Background email error:", err);
-//       }
-//     } else {
-//       console.log("❌ No counsellor email found");
-//     }
-
-//     res.json(lead);
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: error.message });
-//   }
-// }
 
 export async function assignCounsellor(req, res) {
   try {
@@ -244,7 +171,6 @@ export async function assignCounsellor(req, res) {
       performedByName: req.user.name,
     });
 
-    // Send email to counsellor
     if (newCounsellor?.email) {
       try {
         await sendLeadAssignmentEmail({
@@ -257,7 +183,6 @@ export async function assignCounsellor(req, res) {
       }
     }
 
-    // 🟢 NEW: Send SSE real-time notification
     if (newCounsellorId && newCounsellor) {
       const event = {
         type: "lead_assigned",
@@ -281,8 +206,7 @@ export async function assignCounsellor(req, res) {
   }
 }
 
-// ─── PUT /admin/leads/:id/stage ───────────────────────────────────────────────
-// ─── PUT /admin/leads/:id/stage ───────────────────────────────────────────────
+
 export async function updateStage(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
@@ -293,10 +217,8 @@ export async function updateStage(req, res) {
 
     if (!status) return res.status(400).json({ message: "Status is required" });
 
-    // Update lead status
     await lead.update({ status });
 
-    // Log Stage Change
     await logActivity({
       leadId: lead.id,
       actionType: "stage_changed",
@@ -308,7 +230,6 @@ export async function updateStage(req, res) {
       performedByName: req.user.name,
     });
 
-    // === IMPORTANT: Save note with NEW stage ===
     if (note && note.trim()) {
       const stageLabels = {
         new: "New",
@@ -332,7 +253,6 @@ export async function updateStage(req, res) {
       });
     }
 
-    // Keep your existing counseling flow
     const isMovingToCounseling = status === "counseling" && oldStatus !== "counseling";
 
     if (isMovingToCounseling && lead.email) {
@@ -386,7 +306,6 @@ export async function updateStage(req, res) {
         performedByName: req.user.name,
       });
 
-      // Conversation creation
       if (lead.counsellor_id) {
         const counsellor = await User.findByPk(lead.counsellor_id, { attributes: ["name"] });
 
@@ -413,7 +332,6 @@ export async function updateStage(req, res) {
   }
 }
 
-// ─── DELETE ───────────────────────────────────────────────────────────────────
 export async function deleteLead(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
@@ -440,30 +358,26 @@ export async function deleteLead(req, res) {
 export async function getStageNotes(req, res) {
   try {
     const leadId = req.params.id;
-    const stage = req.query.stage; // Optional stage filter
+    const stage = req.query.stage; 
 
-    // You'll need a new table 'stage_notes' or use existing logs
-    // For now, let's fetch from activity logs grouped by stage
+   
     const where = {
       lead_id: leadId,
-      action_type: "stage_note", // New action type
+      action_type: "stage_note", 
     };
 
     if (stage) {
-      where.metadata = { stage }; // You'll need to store stage in metadata
+      where.metadata = { stage };
     }
 
-    // Query your activity logs and group by stage
-    // This is simplified - you'll need to implement based on your DB schema
-
-    res.json({}); // Placeholder
+   
+    res.json({}); 
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
 }
 
-// POST /admin/leads/:id/stage-notes
 export async function addStageNote(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
@@ -475,12 +389,11 @@ export async function addStageNote(req, res) {
       return res.status(400).json({ message: "Stage and note are required." });
     }
 
-    // Log as a special note type with stage metadata
     await logActivity({
       leadId: lead.id,
       actionType: "stage_note",
       note: note,
-      metadata: JSON.stringify({ stage }), // Store which stage this note belongs to
+      metadata: JSON.stringify({ stage }), 
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,

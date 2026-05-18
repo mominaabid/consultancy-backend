@@ -13,7 +13,6 @@ export async function getMyPayments(req, res) {
       return res.status(404).json({ message: "Lead not found" });
     }
 
-    // Get all payments
     const payments = await Payment.findAll({
       where: { user_id: req.user.id, is_deleted: false },
       include: [
@@ -32,7 +31,6 @@ export async function getMyPayments(req, res) {
       order: [["paid_at", "DESC"]],
     });
 
-    // Get fee records (amount = 0)
     const feeRecords = await Payment.findAll({
       where: {
         user_id: req.user.id,
@@ -49,7 +47,6 @@ export async function getMyPayments(req, res) {
       ],
     });
 
-    // Build feeInfo object
     const feeInfo = {};
     feeRecords.forEach((record) => {
       feeInfo[record.application_id] = {
@@ -124,7 +121,7 @@ export async function makePayment(req, res) {
       payment_date: payment_date || new Date(),
       notes: notes || null,
       payment_proof: proofUrl,
-      status: "awaiting_verification", // ✅ FIXED: Use same status for both modes
+      status: "awaiting_verification",
       recorded_by: req.user.id,
       paid_at: new Date(),
     });
@@ -156,7 +153,6 @@ export async function getPaymentStats(req, res) {
       });
     }
 
-    // Get all applications
     const applications = await Application.findAll({
       where: {},
 
@@ -165,7 +161,6 @@ export async function getPaymentStats(req, res) {
 
     const applicationIds = applications.map((a) => a.id);
 
-    // Get all payments
     const payments = await Payment.findAll({
       where: {
         user_id: req.user.id,
@@ -174,7 +169,6 @@ export async function getPaymentStats(req, res) {
       attributes: ["id", "application_id", "amount", "status"],
     });
 
-    // Get fee records
     const feeRecords = await Payment.findAll({
       where: {
         user_id: req.user.id,
@@ -189,7 +183,6 @@ export async function getPaymentStats(req, res) {
       ],
     });
 
-    // Build fee map
     const feeMap = {};
 
     feeRecords.forEach((record) => {
@@ -201,24 +194,20 @@ export async function getPaymentStats(req, res) {
       };
     });
 
-    // ─── TOTAL PAID ─────────────────────
     const total_paid = payments
       .filter((p) => p.status === "completed" && parseFloat(p.amount) > 0)
       .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
-    // ─── TOTAL PENDING ──────────────────
     const total_pending = payments
       .filter(
         (p) => p.status === "awaiting_verification" && parseFloat(p.amount) > 0,
       )
       .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
-    // ─── REJECTED COUNT ─────────────────
     const rejected_count = payments.filter(
       (p) => p.status === "rejected" && parseFloat(p.amount) > 0,
     ).length;
 
-    // ─── FULLY PAID APPLICATIONS ────────
     let completed_count = 0;
 
     applications.forEach((app) => {

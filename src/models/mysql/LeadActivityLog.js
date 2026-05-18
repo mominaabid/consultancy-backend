@@ -3,7 +3,7 @@ import sequelize from '../../config/db.js';
 
 const LeadActivityLog = sequelize.define('LeadActivityLog', {
   id:                 { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  lead_id:            { type: DataTypes.INTEGER, allowNull: true }, // null for non-lead actions
+  lead_id:            { type: DataTypes.INTEGER, allowNull: true }, 
   action_type:        { type: DataTypes.STRING(50), allowNull: false },
   from_value:         { type: DataTypes.STRING(100) },
   to_value:           { type: DataTypes.STRING(100) },

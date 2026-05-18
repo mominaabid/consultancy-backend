@@ -10,7 +10,7 @@ const PasswordResetToken = sequelize.define('PasswordResetToken', {
   tableName:  'password_reset_tokens', 
   timestamps: true,
   createdAt:  'created_at',
-  updatedAt:  false,          // ✅ no updated_at column in this table
+  updatedAt:  false,          
   underscored: true,
 });
 

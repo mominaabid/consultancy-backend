@@ -1,4 +1,3 @@
-// src/models/mysql/Payment.js
 import { DataTypes } from "sequelize";
 import sequelize from "../../config/db.js";
 

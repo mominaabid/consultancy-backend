@@ -1,12 +1,10 @@
-// src/controllers/admin/payment.controller.js
 import db from "../../models/mysql/index.js";
 import { logActivity } from "../../services/activityLog.service.js";
 const { Op } = db.Sequelize;
 
 const { Payment, Application, User, Lead } = db;
 
-// ─── SET TOTAL FEES FOR APPLICATION ───────────────────────────────────────
-// src/controllers/admin/payment.controller.js
+
 export async function setTotalFees(req, res) {
   try {
     const {
@@ -30,7 +28,6 @@ export async function setTotalFees(req, res) {
       return res.status(404).json({ message: "Application not found" });
     }
 
-    // Find or create fee record
     let feeRecord = await Payment.findOne({
       where: {
         application_id: application_id,
@@ -126,7 +123,6 @@ export async function getOfferLetterStudents(req, res) {
         const finalFees = feeRecord?.final_fees || totalFees;
         const remaining = finalFees - totalPaid;
 
-        // ✅ Updated status: "completed" or "in-progress"
         const payment_status = remaining <= 0 ? "completed" : "in-progress";
 
         return {
@@ -141,7 +137,7 @@ export async function getOfferLetterStudents(req, res) {
           final_fees: finalFees,
           total_paid: totalPaid,
           remaining_amount: remaining > 0 ? remaining : 0,
-          payment_status, // ✅ now "completed" or "in-progress"
+          payment_status, 
           payments_count: payments.length,
           status: app.status,
         };
@@ -155,7 +151,6 @@ export async function getOfferLetterStudents(req, res) {
   }
 }
 
-// ─── ADD PAYMENT ──────────────────────────────────────────────────────────
 export async function addPayment(req, res) {
   try {
     const {
@@ -212,7 +207,6 @@ export async function addPayment(req, res) {
   }
 }
 
-// ─── GET ALL PAYMENTS ─────────────────────────────────────────────────────
 export async function getAllPayments(req, res) {
   try {
     const payments = await Payment.findAll({
@@ -237,7 +231,6 @@ export async function getAllPayments(req, res) {
       order: [["paid_at", "DESC"]],
     });
 
-    // Filter out fee records (amount = 0) and show only actual payments
     const actualPayments = payments.filter((p) => p.amount > 0);
 
     
@@ -254,7 +247,7 @@ export async function getAllPayments(req, res) {
       ).length,
       in_progress_count: actualPayments.filter(
         (p) => p.status === "in-progress",
-      ).length, // ✅ new
+      ).length, 
       rejected_count: actualPayments.filter((p) => p.status === "rejected")
         .length,
     };
@@ -265,9 +258,7 @@ export async function getAllPayments(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
-// Add these exports to your src/controllers/admin/payment.controller.js
 
-// ─── DELETE PAYMENT ───────────────────────────────────────────────────────
 export async function deletePayment(req, res) {
   try {
     const payment = await Payment.findByPk(req.params.id);
@@ -293,7 +284,6 @@ export async function deletePayment(req, res) {
   }
 }
 
-// ─── GET PENDING VERIFICATIONS ────────────────────────────────────────────
 export async function getPendingVerifications(req, res) {
   try {
     const payments = await Payment.findAll({
@@ -320,7 +310,6 @@ export async function getPendingVerifications(req, res) {
   }
 }
 
-// ─── VERIFY PAYMENT ────────────────────────────────────────────────────────
 export async function verifyPayment(req, res) {
   try {
     const { id } = req.params;
@@ -382,7 +371,6 @@ export async function verifyPayment(req, res) {
   }
 }
 
-// ─── GET PAYMENT PROOF ─────────────────────────────────────────────────────
 export async function getPaymentProof(req, res) {
   try {
     const { id } = req.params;
@@ -399,43 +387,7 @@ export async function getPaymentProof(req, res) {
   }
 }
 
-// ─── GET STUDENT PAYMENTS ──────────────────────────────────────────────────
-// export async function getStudentPayments(req, res) {
-//   try {
-//     const { studentId } = req.params;
 
-//     const payments = await Payment.findAll({
-//       where: { user_id: studentId, is_deleted: false },
-//       include: [
-//         {
-//           model: Application,
-//           as: "application",
-//           attributes: ["id", "target_university", "course", "status"],
-//         },
-//         {
-//           model: User,
-//           as: "recordedBy",
-//           attributes: ["id", "name"],
-//         },
-//       ],
-//       order: [["paid_at", "DESC"]],
-//     });
-
-//     const totalPaid = payments
-//       .filter((p) => p.status === "completed")
-//       .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-
-//     res.json({
-//       success: true,
-//       payments: payments.filter((p) => p.amount > 0),
-//       total_paid: totalPaid,
-//       total_count: payments.length,
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: error.message });
-//   }
-// }
 
 export async function getStudentPayments(req, res) {
   try {
@@ -462,7 +414,6 @@ export async function getStudentPayments(req, res) {
       order: [["paid_at", "DESC"]],
     });
 
-    // Sirf actual payments
     const actualPayments = payments.filter((p) => p.amount > 0);
 
     const totalPaid = actualPayments

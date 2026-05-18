@@ -1,4 +1,3 @@
-// src/routes/student/application.routes.js
 import { Router } from "express";
 import {
   getProfile,

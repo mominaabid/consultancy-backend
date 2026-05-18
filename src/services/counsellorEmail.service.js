@@ -116,7 +116,6 @@ export async function sendLeadAssignmentEmail({
     return data;
   } catch (error) {
     console.error("❌ Failed to send lead assignment email:", error);
-    // Don't throw – just log, so the API request doesn’t fail
     return null;
   }
 }

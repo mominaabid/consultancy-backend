@@ -5,19 +5,17 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Smart directory selection for Vercel + Local
 const getUploadsDir = () => {
   if (process.env.NODE_ENV === "production") {
-    return "/tmp/uploads"; // Vercel writable directory
+    return "/tmp/uploads"; 
   }
-  return path.join(__dirname, "../../uploads"); // Local
+  return path.join(__dirname, "../../uploads"); 
 };
 
 const UPLOADS_DIR = getUploadsDir();
 const DOCUMENTS_DIR = path.join(UPLOADS_DIR, "documents");
 const PAYMENTS_DIR = path.join(UPLOADS_DIR, "payments");
 
-// Ensure directories exist
 const ensureDirectories = () => {
   [DOCUMENTS_DIR, PAYMENTS_DIR].forEach((dir) => {
     if (!fs.existsSync(dir)) {
@@ -28,7 +26,6 @@ const ensureDirectories = () => {
 
 ensureDirectories();
 
-// Upload document
 export const uploadFile = async (file, studentId, docType) => {
   try {
     const timestamp = Date.now();
@@ -40,7 +37,6 @@ export const uploadFile = async (file, studentId, docType) => {
 
     fs.writeFileSync(filepath, file.buffer);
 
-    // const baseUrl = process.env.BASE_URL || 'http://localhost:3001';
 
     const baseUrl =
       process.env.BASE_URL ||
@@ -66,7 +62,6 @@ export const uploadFile = async (file, studentId, docType) => {
   }
 };
 
-// Upload payment proof
 export const uploadPaymentProof = async (file, userId, paymentId) => {
   try {
     const timestamp = Date.now();
@@ -78,7 +73,6 @@ export const uploadPaymentProof = async (file, userId, paymentId) => {
 
     fs.writeFileSync(filepath, file.buffer);
 
-    // const baseUrl = process.env.BASE_URL || "http://localhost:3001";
 
     const baseUrl =
       process.env.BASE_URL ||
@@ -104,7 +98,6 @@ export const uploadPaymentProof = async (file, userId, paymentId) => {
   }
 };
 
-// Delete file
 export const deleteFile = async (fileKey, type = "document") => {
   try {
     const directory = type === "payment" ? PAYMENTS_DIR : DOCUMENTS_DIR;

@@ -12,27 +12,23 @@ import sequelize from "./src/config/db.js";
 import "./src/models/mysql/index.js";
 import routes from "./src/routes/index.js";
 
-// Define __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Smart Uploads Path for Local + Vercel
 const getUploadsPath = () => {
   if (process.env.NODE_ENV === "production") {
-    return "/tmp/uploads"; // Vercel Serverless
+    return "/tmp/uploads";
   }
-  return path.join(__dirname, "uploads"); // Local
+  return path.join(__dirname, "uploads");
 };
 
 const UPLOADS_DIR = getUploadsPath();
 
-// Ensure directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   console.log("✅ Uploads directory created at:", UPLOADS_DIR);
 }
 
-// Also create subfolders
 const documentsDir = path.join(UPLOADS_DIR, "documents");
 const paymentsDir = path.join(UPLOADS_DIR, "payments");
 
@@ -54,7 +50,6 @@ app.use(
 
 app.use(express.json());
 
-// ✅ Important: Dynamic static serving for Vercel + Local
 app.use("/uploads", express.static(UPLOADS_DIR));
 
 app.use("/api/v1", routes);

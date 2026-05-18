@@ -85,6 +85,6 @@ export const Counsellor = sequelize.define(
   {
     tableName: "counsellors",
     timestamps: true,
-    underscored: true, // Ye automatically camelCase ko snake_case mein convert karta hai DB ke liye
+    underscored: true, 
   },
 );

@@ -43,7 +43,6 @@ const Application = sequelize.define(
       defaultValue: "inquiry",
     },
 
-    // Stage date fields
     inquiry_date: DataTypes.DATE,
     evaluation_date: DataTypes.DATE,
     application_submitted_date: DataTypes.DATE,

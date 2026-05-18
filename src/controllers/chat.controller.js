@@ -1,97 +1,94 @@
-import Conversation from '../models/mongo/Conversation.js';
-import Message      from '../models/mongo/Message.js';
-import { publishToChannel } from '../services/ably.service.js';
-import { sendChatNotificationEmail } from '../services/email.service.js';
-import db from '../models/mysql/index.js';
-import { Op } from 'sequelize';
+import Conversation from "../models/mongo/Conversation.js";
+import Message from "../models/mongo/Message.js";
+import { publishToChannel } from "../services/ably.service.js";
+import { sendChatNotificationEmail } from "../services/email.service.js";
+import db from "../models/mysql/index.js";
+import { Op } from "sequelize";
 const { Lead, User } = db;
 
-// POST /chat/messages/send
-// POST /chat/messages/send
 export async function sendMessage(req, res) {
   try {
     const { conversationId, content } = req.body;
     const user = req.user;
 
     if (!conversationId || !content?.trim()) {
-      return res.status(400).json({ message: 'conversationId and content required.' });
+      return res
+        .status(400)
+        .json({ message: "conversationId and content required." });
     }
 
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation) return res.status(404).json({ message: 'Conversation not found.' });
+    if (!conversation)
+      return res.status(404).json({ message: "Conversation not found." });
 
-    if (conversation.student_id !== user.id && conversation.counsellor_id !== user.id) {
-      return res.status(403).json({ message: 'Access denied.' });
+    if (
+      conversation.student_id !== user.id &&
+      conversation.counsellor_id !== user.id
+    ) {
+      return res.status(403).json({ message: "Access denied." });
     }
 
-    // Save Message
     const message = await Message.create({
       conversation_id: conversationId,
-      sender_id:       user.id,
-      sender_role:     user.role,
-      sender_name:     user.name,
-      content:         content.trim(),
-      type:            'text',
+      sender_id: user.id,
+      sender_role: user.role,
+      sender_name: user.name,
+      content: content.trim(),
+      type: "text",
     });
 
-    const isStudent = user.role === 'student';
-    const recipientId = isStudent ? conversation.counsellor_id : conversation.student_id;
-    const unreadField = isStudent ? 'counsellor_unread' : 'student_unread';
+    const isStudent = user.role === "student";
+    const recipientId = isStudent
+      ? conversation.counsellor_id
+      : conversation.student_id;
+    const unreadField = isStudent ? "counsellor_unread" : "student_unread";
 
-    // Update Conversation
     await Conversation.findByIdAndUpdate(conversationId, {
-      last_message:    content.trim(),
+      last_message: content.trim(),
       last_message_at: new Date(),
       $inc: { [unreadField]: 1 },
     });
 
     const messageData = {
-      _id:             message._id,
+      _id: message._id,
       conversation_id: conversationId,
-      sender_id:       user.id,
-      sender_role:     user.role,
-      sender_name:     user.name,
-      content:         message.content,
-      createdAt:       message.createdAt,
+      sender_id: user.id,
+      sender_role: user.role,
+      sender_name: user.name,
+      content: message.content,
+      createdAt: message.createdAt,
     };
 
     const fullMessagePayload = { message: messageData };
 
-    // ==================== CRITICAL REAL-TIME BROADCASTS ====================
-
-    // 1. Send to Conversation Channel → Both users should see message instantly
     await publishToChannel(
       `conversation:${conversationId}`,
-      'new_message',
-      fullMessagePayload
+      "new_message",
+      fullMessagePayload,
     );
 
-    // 2. Send notification to Recipient (for sidebar update)
-    await publishToChannel(`user:${recipientId}`, 'new_message_notification', {
+    await publishToChannel(`user:${recipientId}`, "new_message_notification", {
       conversationId,
       senderName: user.name,
       senderRole: user.role,
       preview: content.trim().slice(0, 60),
     });
 
-    // 3. Send notification to Sender (for their own sidebar update)
-    await publishToChannel(`user:${user.id}`, 'new_message_notification', {
+    await publishToChannel(`user:${user.id}`, "new_message_notification", {
       conversationId,
       senderName: user.name,
       senderRole: user.role,
       preview: content.trim().slice(0, 60),
-      isFromMe: true
+      isFromMe: true,
     });
 
     res.status(201).json(messageData);
-
   } catch (error) {
-    console.error('sendMessage error:', error);
+    console.error("sendMessage error:", error);
     res.status(500).json({ message: error.message });
   }
 }
 
-// Also add typing indicators via Ably
 export async function sendTyping(req, res) {
   try {
     const { conversationId, isTyping } = req.body;
@@ -99,8 +96,8 @@ export async function sendTyping(req, res) {
 
     await publishToChannel(
       `conversation:${conversationId}`,
-      isTyping ? 'typing_start' : 'typing_stop',
-      { userId: user.id, userName: user.name, role: user.role }
+      isTyping ? "typing_start" : "typing_stop",
+      { userId: user.id, userName: user.name, role: user.role },
     );
 
     res.json({ ok: true });
@@ -108,45 +105,44 @@ export async function sendTyping(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
-// POST /chat/sync
-// Call this once — creates conversations for all existing counseling leads
+
 export async function syncConversations(req, res) {
   try {
-    // Find all leads with counseling+ status that have a counsellor assigned
     const leads = await Lead.findAll({
       where: {
-        status:       ['counseling', 'applied', 'visa', 'success'],
+        status: ["counseling", "applied", "visa", "success"],
         counsellor_id: { [Op.ne]: null },
       },
-      include: [{ model: User, as: 'counsellor', attributes: ['id', 'name'] }],
+      include: [{ model: User, as: "counsellor", attributes: ["id", "name"] }],
     });
 
     let created = 0;
 
     for (const lead of leads) {
-      // Find student user by email
       const studentUser = await User.findOne({
-        where: { email: lead.email, role: 'student' },
-        attributes: ['id', 'name'],
+        where: { email: lead.email, role: "student" },
+        attributes: ["id", "name"],
       });
 
       if (!studentUser) continue;
 
       const existing = await Conversation.findOne({
-        student_id:    studentUser.id,
+        student_id: studentUser.id,
         counsellor_id: lead.counsellor_id,
       });
 
       if (!existing) {
         await Conversation.create({
-          student_id:      studentUser.id,
-          counsellor_id:   lead.counsellor_id,
-          student_name:    lead.name,
-          counsellor_name: lead.counsellor?.name || 'Counsellor',
-          last_message:    '',
+          student_id: studentUser.id,
+          counsellor_id: lead.counsellor_id,
+          student_name: lead.name,
+          counsellor_name: lead.counsellor?.name || "Counsellor",
+          last_message: "",
         });
         created++;
-        console.log(`💬 Created conversation: ${lead.name} ↔ ${lead.counsellor?.name}`);
+        console.log(
+          `💬 Created conversation: ${lead.name} ↔ ${lead.counsellor?.name}`,
+        );
       }
     }
 
@@ -156,19 +152,18 @@ export async function syncConversations(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
-// ─── GET /chat/conversations ──────────────────────────────────────────────────
-// Returns all conversations for the logged-in user (student or counsellor)
+
 export async function getConversations(req, res) {
   try {
     const userId = req.user.id;
-    const role   = req.user.role;
+    const role = req.user.role;
 
-    const query = role === 'student'
-      ? { student_id: userId }
-      : { counsellor_id: userId };
+    const query =
+      role === "student" ? { student_id: userId } : { counsellor_id: userId };
 
-    const conversations = await Conversation.find(query)
-      .sort({ last_message_at: -1 });
+    const conversations = await Conversation.find(query).sort({
+      last_message_at: -1,
+    });
 
     res.json(conversations);
   } catch (error) {
@@ -177,26 +172,26 @@ export async function getConversations(req, res) {
   }
 }
 
-// ─── GET /chat/messages/:conversationId ───────────────────────────────────────
-// Returns message history for a conversation (paginated)
-// GET /chat/messages/:conversationId
 export async function getMessages(req, res) {
   try {
     const { conversationId } = req.params;
-    const page  = parseInt(req.query.page)  || 1;
+    const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
-    const skip  = (page - 1) * limit;
+    const skip = (page - 1) * limit;
 
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation) return res.status(404).json({ message: 'Conversation not found.' });
+    if (!conversation)
+      return res.status(404).json({ message: "Conversation not found." });
 
     const userId = req.user.id;
-    const role   = req.user.role;
+    const role = req.user.role;
 
-    // ✅ Admin can see all conversations — only restrict student/counsellor
-    if (role !== 'admin') {
-      if (conversation.student_id !== userId && conversation.counsellor_id !== userId) {
-        return res.status(403).json({ message: 'Access denied.' });
+    if (role !== "admin") {
+      if (
+        conversation.student_id !== userId &&
+        conversation.counsellor_id !== userId
+      ) {
+        return res.status(403).json({ message: "Access denied." });
       }
     }
 
@@ -212,35 +207,35 @@ export async function getMessages(req, res) {
   }
 }
 
-
-
-// ─── POST /chat/conversations/start ───────────────────────────────────────────
-// Create or get existing conversation between student and counsellor
 export async function startConversation(req, res) {
   try {
     const userId = req.user.id;
-    const role   = req.user.role;
+    const role = req.user.role;
 
     let student_id, counsellor_id, student_name, counsellor_name;
 
-    if (role === 'student') {
-      student_id      = userId;
-      student_name    = req.user.name;
-      counsellor_id   = parseInt(req.body.counsellor_id);
-      counsellor_name = req.body.counsellor_name || 'Counsellor';
+    if (role === "student") {
+      student_id = userId;
+      student_name = req.user.name;
+      counsellor_id = parseInt(req.body.counsellor_id);
+      counsellor_name = req.body.counsellor_name || "Counsellor";
     } else {
-      counsellor_id   = userId;
+      counsellor_id = userId;
       counsellor_name = req.user.name;
-      student_id      = parseInt(req.body.student_id);
-      student_name    = req.body.student_name || 'Student';
+      student_id = parseInt(req.body.student_id);
+      student_name = req.body.student_name || "Student";
     }
 
     if (!student_id || !counsellor_id) {
-      return res.status(400).json({ message: 'student_id and counsellor_id required.' });
+      return res
+        .status(400)
+        .json({ message: "student_id and counsellor_id required." });
     }
 
-    // Find or create conversation
-    let conversation = await Conversation.findOne({ student_id, counsellor_id });
+    let conversation = await Conversation.findOne({
+      student_id,
+      counsellor_id,
+    });
 
     if (!conversation) {
       conversation = await Conversation.create({
@@ -258,54 +253,51 @@ export async function startConversation(req, res) {
   }
 }
 
-// ─── PUT /chat/messages/read/:conversationId ──────────────────────────────────
-// Mark all messages as read for current user
 export async function markAsRead(req, res) {
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
-    const role   = req.user.role;
+    const role = req.user.role;
 
-    // Mark messages as read
     await Message.updateMany(
-      { conversation_id: conversationId, sender_id: { $ne: userId }, is_read: false },
-      { is_read: true }
+      {
+        conversation_id: conversationId,
+        sender_id: { $ne: userId },
+        is_read: false,
+      },
+      { is_read: true },
     );
 
-    // Reset unread count
-let unreadField = '';
+    let unreadField = "";
 
-if (role?.toLowerCase() === 'student') {
-  unreadField = 'student_unread';
-}
+    if (role?.toLowerCase() === "student") {
+      unreadField = "student_unread";
+    }
 
-if (
-  role?.toLowerCase() === 'counsellor' ||
-  role?.toLowerCase() === 'counselor'
-) {
-  unreadField = 'counsellor_unread';
-}
+    if (
+      role?.toLowerCase() === "counsellor" ||
+      role?.toLowerCase() === "counselor"
+    ) {
+      unreadField = "counsellor_unread";
+    }
     if (unreadField) {
-  await Conversation.findByIdAndUpdate(
-    conversationId,
-    { [unreadField]: 0 }
-  );
-}
+      await Conversation.findByIdAndUpdate(conversationId, {
+        [unreadField]: 0,
+      });
+    }
 
-    res.json({ message: 'Messages marked as read.' });
+    res.json({ message: "Messages marked as read." });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
 }
 
-
-
-// GET /chat/admin/conversations  (admin only — sees all)
 export async function getAllConversations(req, res) {
   try {
-    const conversations = await Conversation.find({})
-      .sort({ last_message_at: -1 });
+    const conversations = await Conversation.find({}).sort({
+      last_message_at: -1,
+    });
     res.json(conversations);
   } catch (error) {
     console.error(error);

@@ -15,7 +15,6 @@ const router = express.Router();
 
 router.use(auth);
 
-// Only counsellors and admins can access
 router.use((req, res, next) => {
   if (req.user.role !== "counsellor" && req.user.role !== "admin") {
     return res

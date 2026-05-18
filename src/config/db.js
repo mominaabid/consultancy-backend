@@ -15,7 +15,7 @@ const sequelize = new Sequelize(
 
     define: {
       timestamps: true,
-      underscored: true,   // 🔥 THIS FIXES ALL YOUR ERRORS
+      underscored: true,   
       freezeTableName: true
     }
   }

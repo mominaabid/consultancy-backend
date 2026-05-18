@@ -1,4 +1,3 @@
-// src/models/mysql/ActivityLog.js
 import { DataTypes } from 'sequelize';
 import sequelize from '../../config/db.js';
 

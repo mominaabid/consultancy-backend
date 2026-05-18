@@ -1,4 +1,3 @@
-// src/models/mysql/Document.js
 import { DataTypes } from 'sequelize';
 import sequelize from '../../config/db.js';
 
@@ -17,7 +16,6 @@ const Document = sequelize.define('Document', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
-// src/models/mysql/Document.js - Make sure doc_type ENUM includes all types
 doc_type: {
   type: DataTypes.ENUM(
     'passport', 'transcript', 'offer_letter', 'visa',

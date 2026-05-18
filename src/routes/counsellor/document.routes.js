@@ -1,4 +1,3 @@
-// src/routes/counsellor/document.routes.js
 import express from 'express';
 import multer from 'multer';
 import auth from '../../middleware/auth.middleware.js';
@@ -12,10 +11,8 @@ import {
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Apply auth to all routes
 router.use(auth);
 
-// Only counsellors and admins can access these routes
 router.use((req, res, next) => {
   if (req.user.role !== 'counsellor' && req.user.role !== 'admin') {
     return res.status(403).json({ message: 'Access denied. Counsellor or admin only.' });

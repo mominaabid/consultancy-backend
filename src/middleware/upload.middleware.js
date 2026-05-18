@@ -2,7 +2,6 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-// Determine writable directory
 const getUploadsDir = () => {
   if (process.env.NODE_ENV === "production") {
     return "/tmp/uploads";
@@ -12,7 +11,6 @@ const getUploadsDir = () => {
 
 const UPLOADS_DIR = getUploadsDir();
 
-// Ensure the directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }

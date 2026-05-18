@@ -30,9 +30,8 @@ const VALID_DOC_TYPES = [
 export async function getMyDocuments(req, res) {
   try {
     const studentEmail = req.user.email;
-    const { application_id } = req.query; // ← new query param
+    const { application_id } = req.query;
 
-    // Find the student's lead record
     const lead = await Lead.findOne({
       where: { email: studentEmail, is_deleted: false },
     });
@@ -41,7 +40,6 @@ export async function getMyDocuments(req, res) {
       return res.status(404).json({ message: "Student profile not found" });
     }
 
-    // Helper to verify application ownership (if an id is given)
     const verifyApplicationOwnership = async (appId) => {
       const app = await Application.findOne({
         where: {
@@ -58,7 +56,6 @@ export async function getMyDocuments(req, res) {
     };
 
     if (application_id) {
-      // Validate that the application belongs to this student
       const isOwner = await verifyApplicationOwnership(application_id);
       if (!isOwner) {
         return res
@@ -81,9 +78,6 @@ export async function getMyDocuments(req, res) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// GET ALL MOBILE DOC TYPES
-// ─────────────────────────────────────────────────────────────
 export async function getMobileDocs(req, res) {
   try {
     const mobileDocs = await MobileDoc.findAll({
@@ -107,37 +101,6 @@ export async function getMobileDocs(req, res) {
   }
 }
 
-// export const getDocumentStats = async (req, res) => {
-//   try {
-//     const docs = await Document.findAll({
-//       attributes: ["status"],
-//     });
-
-//     const stats = {
-//       total: docs.length,
-//       verified: 0,
-//       pending: 0,
-//       review: 0,
-//       rejected: 0,
-//     };
-
-//     docs.forEach((doc) => {
-//       const status = doc.status;
-
-//       if (stats.hasOwnProperty(status)) {
-//         stats[status] += 1;
-//       }
-//     });
-
-//     return res.status(200).json(stats);
-//   } catch (error) {
-//     console.error("getDocumentStats error:", error);
-//     return res.status(500).json({
-//       message: "Failed to fetch document stats",
-//     });
-//   }
-// };
-
 export const getDocumentStats = async (req, res) => {
   try {
     const [docs, mobileDocs, applications] = await Promise.all([
@@ -152,7 +115,7 @@ export const getDocumentStats = async (req, res) => {
       pending: 0,
       review: 0,
       rejected: 0,
-      totalRequired: applications.length * mobileDocs.length, // 👈 dynamic magic
+      totalRequired: applications.length * mobileDocs.length,
       applications: applications.length,
       docTypes: mobileDocs.length,
     };
@@ -178,7 +141,6 @@ export async function uploadDocument(req, res) {
     let { doc_type, application_id } = req.body;
     const file = req.file;
 
-    // ── validation ─────────────────────────────────────────
     if (!file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
@@ -192,7 +154,6 @@ export async function uploadDocument(req, res) {
       return res.status(400).json({ message: "File too large (max 5MB)" });
     }
 
-    // ── find student lead ──────────────────────────────────
     const lead = await Lead.findOne({
       where: { email: req.user.email, is_deleted: false },
     });
@@ -200,7 +161,6 @@ export async function uploadDocument(req, res) {
       return res.status(404).json({ message: "Student lead not found" });
     }
 
-    // ── verify application ownership ───────────────────────
     const application = await Application.findOne({
       where: {
         id: application_id,
@@ -213,7 +173,6 @@ export async function uploadDocument(req, res) {
         .json({ message: "Application not found or access denied" });
     }
 
-    // ── determine doc_type (sanitise) ──────────────────────
     let finalDocType = "other";
     if (typeof doc_type === "string") {
       const lower = doc_type.toLowerCase();
@@ -225,18 +184,16 @@ export async function uploadDocument(req, res) {
       }
     }
 
-    // ── upload file ────────────────────────────────────────
     const { fileUrl, fileKey, originalName } = await uploadFile(
       file,
       lead.id,
       finalDocType,
     );
 
-    // ── create or update document (per application) ────────
     const existingDoc = await Document.findOne({
       where: {
         student_id: lead.id,
-        application_id: application_id, // now linked to this specific app
+        application_id: application_id,
         doc_type: finalDocType,
         is_deleted: false,
       },
@@ -291,7 +248,6 @@ export async function uploadDocument(req, res) {
   }
 }
 
-// ─── DELETE DOCUMENT ────────────────────────────────────────────────────────
 export async function deleteDocument(req, res) {
   try {
     const document = await Document.findByPk(req.params.id);

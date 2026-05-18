@@ -57,7 +57,6 @@ export const getCounsellorProfile = async (req, res) => {
     response.createdAt = counsellor.createdAt;
     response.updatedAt = counsellor.updatedAt;
 
-    // Add full URL for profile image
     if (response.profile_image) {
       response.profilePictureUrl = `${req.protocol}://${req.get("host")}/${response.profile_image}`;
     }
@@ -71,7 +70,6 @@ export const getCounsellorProfile = async (req, res) => {
 
 export const updateCounsellorProfile = async (req, res) => {
   const { name, father_name, phone, cnic, address } = req.body;
-  // email is NOT taken from req.body (we keep existing email)
   const normalizedCNIC = cnic ? normalizeCNIC(cnic) : undefined;
 
   const transaction = await sequelize.transaction();
@@ -87,16 +85,13 @@ export const updateCounsellorProfile = async (req, res) => {
       return res.status(404).json({ message: "Counsellor profile not found" });
     }
 
-    // Build update object dynamically
     const counsellorUpdate = {};
     if (name !== undefined) counsellorUpdate.name = name;
     if (father_name !== undefined) counsellorUpdate.father_name = father_name;
     if (phone !== undefined) counsellorUpdate.phone = phone;
     if (cnic !== undefined) counsellorUpdate.cnic = normalizedCNIC;
     if (address !== undefined) counsellorUpdate.address = address;
-    // Email is never updated from this endpoint
 
-    // Only run uniqueness checks for fields that are being changed
     if (phone && phone !== counsellor.phone) {
       const existingPhone = await Counsellor.findOne({
         where: {
@@ -129,10 +124,8 @@ export const updateCounsellorProfile = async (req, res) => {
       }
     }
 
-    // Update counsellor
     await counsellor.update(counsellorUpdate, { transaction });
 
-    // Sync User table (only name, email remains unchanged)
     const user = await User.findByPk(req.user.id, { transaction });
     if (user && name !== undefined) {
       await user.update({ name }, { transaction });

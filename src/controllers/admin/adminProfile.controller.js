@@ -39,9 +39,8 @@ export const getAdminProfile = async (req, res) => {
 export const updateAdminProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { name } = req.body; // Only accept name field
+    const { name } = req.body; 
 
-    // Validate: name is required
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Name is required" });
     }
@@ -54,11 +53,9 @@ export const updateAdminProfile = async (req, res) => {
       return res.status(404).json({ message: "Admin not found" });
     }
 
-    // Update only the name field
     admin.name = name.trim();
     await admin.save();
 
-    // Return updated profile (excluding password hash)
     res.status(200).json({
       id: admin.id,
       name: admin.name,

@@ -1,14 +1,13 @@
-import db from '../../models/mysql/index.js';
+import db from "../../models/mysql/index.js";
 
 const { Application, Document, Sequelize } = db;
 
 export const getProfile = async (req, res) => {
   try {
-    // First try to find lead by email from token
     const lead = await Lead.findOne({
       where: { email: req.user?.email, is_deleted: false },
     });
-    
+
     res.json({
       name: lead?.name || req.user?.name || "Student",
       email: lead?.email || req.user?.email,
@@ -19,16 +18,17 @@ export const getProfile = async (req, res) => {
   }
 };
 
-// ─── GET ALL APPLICATIONS FOR STUDENT ───────────────────────────────────────
-// src/controllers/student/application.controller.js
-// src/controllers/student/application.controller.js
-
 export const getApplications = async (req, res) => {
   try {
     const userId = req.user?.id;
     const userEmail = req.user?.email;
 
-    console.log('Student fetching applications - User ID:', userId, 'Email:', userEmail);
+    console.log(
+      "Student fetching applications - User ID:",
+      userId,
+      "Email:",
+      userEmail,
+    );
 
     if (!userId && !userEmail) {
       return res.status(401).json({ message: "User not authenticated" });
@@ -37,11 +37,9 @@ export const getApplications = async (req, res) => {
     const applications = await Application.findAll({
       where: {
         [db.Sequelize.Op.or]: [
-          { user_id: userId },           // For old student-created apps
-          { email: userEmail?.toLowerCase() },   // For counsellor-created apps
-          // Optional: also match by phone if needed
-          // { phone: req.user?.phone }
-        ]
+          { user_id: userId },
+          { email: userEmail?.toLowerCase() },
+        ],
       },
       order: [["created_at", "DESC"]],
     });
@@ -49,14 +47,12 @@ export const getApplications = async (req, res) => {
     console.log(`✅ Found ${applications.length} applications for student`);
 
     res.json(applications);
-
   } catch (err) {
     console.error("Error fetching applications:", err);
     res.status(500).json({ message: "Error fetching applications" });
   }
 };
 
-// ─── GET SINGLE APPLICATION ─────────────────────────────────────────────────
 export const getApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -67,9 +63,9 @@ export const getApplication = async (req, res) => {
         id: id,
         [db.Sequelize.Op.or]: [
           { user_id: req.user?.id },
-          { email: userEmail?.toLowerCase() }
-        ]
-      }
+          { email: userEmail?.toLowerCase() },
+        ],
+      },
     });
 
     if (!application) {
@@ -77,10 +73,8 @@ export const getApplication = async (req, res) => {
     }
 
     res.json(application);
-
   } catch (err) {
     console.error("Error fetching application:", err);
     res.status(500).json({ message: "Error fetching application" });
   }
 };
-

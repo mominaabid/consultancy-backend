@@ -4,9 +4,6 @@ import db from "../models/mysql/index.js";
 
 const { User, PasswordResetToken } = db;
 
-/* ================= STUDENT ================= */
-
-// GET /auth/verify-setup-token
 export async function verifySetupToken(req, res) {
   try {
     const { token } = req.query;
@@ -33,7 +30,6 @@ export async function verifySetupToken(req, res) {
   }
 }
 
-// POST /auth/setup-password
 export async function setupPassword(req, res) {
   try {
     const { token, password } = req.body;
@@ -73,7 +69,6 @@ export async function setupPassword(req, res) {
   }
 }
 
-// POST /auth/login
 export async function login(req, res) {
   try {
     const { email, password } = req.body;
@@ -107,9 +102,6 @@ export async function login(req, res) {
   }
 }
 
-/* ================= COUNSELLOR ================= */
-
-// GET /auth/counsellor/verify-setup-token
 export async function verifyCounsellorSetupToken(req, res) {
   try {
     const { token } = req.query;
@@ -141,7 +133,6 @@ export async function verifyCounsellorSetupToken(req, res) {
   }
 }
 
-// POST /auth/counsellor/setup-password
 export async function setupCounsellorPassword(req, res) {
   try {
     const { token, password } = req.body;
@@ -186,7 +177,6 @@ export async function setupCounsellorPassword(req, res) {
   }
 }
 
-// POST /auth/counsellor/login
 export async function counsellorLogin(req, res) {
   try {
     const { email, password } = req.body;
@@ -221,9 +211,6 @@ export async function counsellorLogin(req, res) {
   }
 }
 
-/* ================= COMMON ================= */
-
-// GET /auth/me
 export async function getMe(req, res) {
   try {
     const user = await User.findOne({

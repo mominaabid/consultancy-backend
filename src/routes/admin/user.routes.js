@@ -4,7 +4,6 @@ import db from "../../models/mysql/index.js";
 const router = Router();
 const { User } = db;
 
-// GET COUNSELLORS
 router.get("/", async (req, res) => {
   try {
     const where = {};

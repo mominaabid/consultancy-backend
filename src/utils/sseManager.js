@@ -1,47 +1,46 @@
-// utils/sseManager.js
 class SSEManager {
   constructor() {
-    this.clients = new Map(); // userId -> { response, userId, role }
+    this.clients = new Map();
   }
 
-  // Add client connection - ⭐ FIX: Add req parameter
-  addClient(userId, role, res, req) {  // Added req parameter
-    // Set SSE headers
+  addClient(userId, role, res, req) {
     res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Credentials': 'true'
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Credentials": "true",
     });
 
-    // Send initial connection message
-    res.write(`data: ${JSON.stringify({ type: 'connected', userId, role })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "connected", userId, role })}\n\n`,
+    );
 
     const client = { userId, role, res };
-    this.clients.set(userId.toString(), client); // Ensure userId is string
+    this.clients.set(userId.toString(), client);
 
-    // Handle client disconnect
     if (req) {
-      req.on('close', () => {
+      req.on("close", () => {
         console.log(`Client disconnected: ${userId}`);
         this.removeClient(userId);
       });
     }
 
-    console.log(`SSE client added: ${userId} (${role}), Total clients: ${this.clients.size}`);
+    console.log(
+      `SSE client added: ${userId} (${role}), Total clients: ${this.clients.size}`,
+    );
     return client;
   }
 
-  // Remove client
   removeClient(userId) {
     const deleted = this.clients.delete(userId.toString());
     if (deleted) {
-      console.log(`SSE client removed: ${userId}, Remaining: ${this.clients.size}`);
+      console.log(
+        `SSE client removed: ${userId}, Remaining: ${this.clients.size}`,
+      );
     }
   }
 
-  // Send event to specific user
   sendToUser(userId, event) {
     const client = this.clients.get(userId.toString());
     if (client && client.res && !client.res.writableEnded) {
@@ -60,7 +59,6 @@ class SSEManager {
     }
   }
 
-  // Send event to all users with specific role
   sendToRole(role, event) {
     let sent = 0;
     for (const [userId, client] of this.clients) {
@@ -78,7 +76,6 @@ class SSEManager {
     return sent;
   }
 
-  // Send event to all connected clients
   sendToAll(event) {
     let sent = 0;
     for (const [userId, client] of this.clients) {
@@ -94,17 +91,14 @@ class SSEManager {
     return sent;
   }
 
-  // Get connected clients count
   getConnectedCount() {
     return this.clients.size;
   }
 
-  // Get all connected user IDs (for debugging)
   getConnectedUsers() {
     return Array.from(this.clients.keys());
   }
 }
 
-// Singleton instance
 const sseManager = new SSEManager();
 export default sseManager;
