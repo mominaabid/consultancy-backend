@@ -8,17 +8,100 @@ import sseManager from "../utils/sseManager.js";
 
 const { Lead, User, PasswordResetToken } = db;
 
+function computeEnglishTestOverallScore(testType, scores) {
+  if (!testType || !scores) return null;
+
+  try {
+    const values = Object.values(scores).filter(
+      (v) => v !== "" && !isNaN(parseFloat(v)),
+    );
+    if (values.length === 0) return null;
+
+    switch (testType) {
+      case "ielts":
+      case "pte":
+        if (values.length !== 4) return null;
+        const avg = values.reduce((a, b) => a + parseFloat(b), 0) / 4;
+        return Math.round(avg * 2) / 2;
+      case "toefl":
+        if (values.length !== 4) return null;
+        return values.reduce((a, b) => a + parseFloat(b), 0);
+      case "duolingo":
+        if (values.length !== 4) return null;
+        return values.reduce((a, b) => a + parseFloat(b), 0) / 4;
+      default:
+        return null;
+    }
+  } catch (err) {
+    console.error("Error computing score:", err);
+    return null;
+  }
+}
+
+/**
+ * Sanitizes lead data before DB insertion/update.
+ * Converts empty strings and "Invalid date" to null for date, integer, and JSON fields.
+ */
+function sanitizeLeadData(data) {
+  const sanitized = { ...data };
+
+  // Date fields
+  const dateFields = ["dob"];
+  for (const field of dateFields) {
+    if (sanitized[field] === "" || sanitized[field] === "Invalid date") {
+      sanitized[field] = null;
+    }
+  }
+
+  // Integer fields
+  const intFields = ["year_awarded", "counsellor_id"];
+  for (const field of intFields) {
+    if (
+      sanitized[field] === "" ||
+      sanitized[field] === null ||
+      sanitized[field] === undefined
+    ) {
+      sanitized[field] = null;
+    } else if (!isNaN(Number(sanitized[field]))) {
+      sanitized[field] = Number(sanitized[field]);
+    } else {
+      sanitized[field] = null;
+    }
+  }
+
+  // JSON field
+  if (
+    sanitized.english_test_scores === "" ||
+    sanitized.english_test_scores === null
+  ) {
+    sanitized.english_test_scores = null;
+  }
+
+  return sanitized;
+}
+
 export async function createLead(req, res) {
   try {
+    // Sanitize incoming data
+    let sanitizedBody = sanitizeLeadData(req.body);
+
+    // Handle counsellor assignment logic
     const data = {
-      ...req.body,
+      ...sanitizedBody,
       counsellor_id:
-        req.body.counsellor_id === "" || !req.body.counsellor_id
+        sanitizedBody.counsellor_id === "" || !sanitizedBody.counsellor_id
           ? req.user.role === "counsellor"
-            ? req.user.id 
+            ? req.user.id
             : null
-          : Number(req.body.counsellor_id),
+          : Number(sanitizedBody.counsellor_id),
     };
+
+    if (data.english_proficiency_test && data.english_test_scores) {
+      data.english_test_overall_score = computeEnglishTestOverallScore(
+        data.english_proficiency_test,
+        data.english_test_scores,
+      );
+    }
 
     const lead = await Lead.create(data);
 
@@ -97,6 +180,9 @@ export async function updateLead(req, res) {
     const lead = await Lead.findByPk(req.params.id);
     if (!lead) return res.status(404).json({ message: "Lead not found." });
 
+    // Sanitize the incoming update data
+    let sanitizedBody = sanitizeLeadData(req.body);
+
     const fields = [
       "name",
       "email",
@@ -104,19 +190,46 @@ export async function updateLead(req, res) {
       "preferred_country",
       "study_level",
       "source",
+      "dob",
+      "marital_status",
+      "father_name",
+      "father_contact",
+      "home_address",
+      "year_awarded",
+      "grades_cgpa",
+      "board_university",
+      "english_proficiency_test",
+      "english_test_scores",
     ];
 
     const changes = [];
     fields.forEach((field) => {
       if (
-        req.body[field] !== undefined &&
-        String(req.body[field]) !== String(lead[field])
+        sanitizedBody[field] !== undefined &&
+        String(sanitizedBody[field]) !== String(lead[field])
       ) {
-        changes.push(`${field}: "${lead[field]}" → "${req.body[field]}"`);
+        changes.push(`${field}: "${lead[field]}" → "${sanitizedBody[field]}"`);
       }
     });
 
-    await lead.update(req.body);
+    let updateData = { ...sanitizedBody };
+    if (
+      sanitizedBody.english_proficiency_test ||
+      sanitizedBody.english_test_scores
+    ) {
+      const testType =
+        sanitizedBody.english_proficiency_test || lead.english_proficiency_test;
+      const scores =
+        sanitizedBody.english_test_scores || lead.english_test_scores;
+      if (testType && scores) {
+        updateData.english_test_overall_score = computeEnglishTestOverallScore(
+          testType,
+          scores,
+        );
+      }
+    }
+
+    await lead.update(updateData);
 
     await logActivity({
       leadId: lead.id,
@@ -136,8 +249,6 @@ export async function updateLead(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
-
-
 
 export async function assignCounsellor(req, res) {
   try {
@@ -206,7 +317,6 @@ export async function assignCounsellor(req, res) {
   }
 }
 
-
 export async function updateStage(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
@@ -253,7 +363,8 @@ export async function updateStage(req, res) {
       });
     }
 
-    const isMovingToCounseling = status === "counseling" && oldStatus !== "counseling";
+    const isMovingToCounseling =
+      status === "counseling" && oldStatus !== "counseling";
 
     if (isMovingToCounseling && lead.email) {
       const existingUser = await User.findOne({ where: { email: lead.email } });
@@ -307,10 +418,12 @@ export async function updateStage(req, res) {
       });
 
       if (lead.counsellor_id) {
-        const counsellor = await User.findByPk(lead.counsellor_id, { attributes: ["name"] });
+        const counsellor = await User.findByPk(lead.counsellor_id, {
+          attributes: ["name"],
+        });
 
         const exists = await Conversation.findOne({
-          where: { student_id: student.id, counsellor_id: lead.counsellor_id }
+          where: { student_id: student.id, counsellor_id: lead.counsellor_id },
         });
 
         if (!exists) {
@@ -358,20 +471,18 @@ export async function deleteLead(req, res) {
 export async function getStageNotes(req, res) {
   try {
     const leadId = req.params.id;
-    const stage = req.query.stage; 
+    const stage = req.query.stage;
 
-   
     const where = {
       lead_id: leadId,
-      action_type: "stage_note", 
+      action_type: "stage_note",
     };
 
     if (stage) {
       where.metadata = { stage };
     }
 
-   
-    res.json({}); 
+    res.json({});
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -393,7 +504,7 @@ export async function addStageNote(req, res) {
       leadId: lead.id,
       actionType: "stage_note",
       note: note,
-      metadata: JSON.stringify({ stage }), 
+      metadata: JSON.stringify({ stage }),
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
