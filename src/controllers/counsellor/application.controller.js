@@ -169,7 +169,10 @@ export const getStudentsWithApplications = async (req, res) => {
       email: lead.email,
       phone: lead.phone,
       status: lead.status,
-      
+      last_degree: lead.study_level || "",
+      cgpa: lead.grades_cgpa || "",
+      english_test: lead.english_proficiency_test || "",
+      test_score: lead.english_test_overall_score || "",
 
       applications: lead.applications?.map((app) => ({
         id: app.id,
@@ -255,7 +258,17 @@ export const getAssignedStudents = async (req, res) => {
         counsellor_id: req.user.id,
         is_deleted: false,
       },
-      attributes: ["id", "name", "email", "phone", "created_at"],
+      attributes: [
+        "id",
+        "name",
+        "email",
+        "phone",
+        "created_at",
+        "study_level",
+        "grades_cgpa",
+        "english_proficiency_test",
+        "english_test_overall_score",
+      ],
     });
 
     res.json({
@@ -375,8 +388,6 @@ export const createApplication = async (req, res) => {
   }
 };
 
-
-
 export const updateApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -387,7 +398,7 @@ export const updateApplication = async (req, res) => {
     }
 
     const updateData = { ...req.body };
-    delete updateData.user_id; 
+    delete updateData.user_id;
 
     if (!isAdmin) {
       const lead = await Lead.findOne({
@@ -411,7 +422,7 @@ export const updateApplication = async (req, res) => {
     }
 
     await logActivity({
-      leadId: application.user_id, 
+      leadId: application.user_id,
       actionType: "application_updated",
       note: `Application updated for ${application.target_university}`,
       performedBy: req.user.id,

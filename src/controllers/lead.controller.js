@@ -38,10 +38,6 @@ function computeEnglishTestOverallScore(testType, scores) {
   }
 }
 
-/**
- * Sanitizes lead data before DB insertion/update.
- * Converts empty strings and "Invalid date" to null for date, integer, and JSON fields.
- */
 function sanitizeLeadData(data) {
   const sanitized = { ...data };
 
@@ -69,12 +65,26 @@ function sanitizeLeadData(data) {
     }
   }
 
-  // JSON field
+  // JSON field - we keep it but will usually be null now
   if (
     sanitized.english_test_scores === "" ||
     sanitized.english_test_scores === null
   ) {
     sanitized.english_test_scores = null;
+  }
+
+  // Handle total score
+  if (
+    sanitized.english_test_overall_score === "" ||
+    sanitized.english_test_overall_score === null
+  ) {
+    sanitized.english_test_overall_score = null;
+  } else if (!isNaN(parseFloat(sanitized.english_test_overall_score))) {
+    sanitized.english_test_overall_score = parseFloat(
+      sanitized.english_test_overall_score,
+    );
+  } else {
+    sanitized.english_test_overall_score = null;
   }
 
   return sanitized;
@@ -96,12 +106,31 @@ export async function createLead(req, res) {
           : Number(sanitizedBody.counsellor_id),
     };
 
-    if (data.english_proficiency_test && data.english_test_scores) {
-      data.english_test_overall_score = computeEnglishTestOverallScore(
-        data.english_proficiency_test,
-        data.english_test_scores,
-      );
+    // Compute overall score only if direct score is not provided
+    if (
+      data.english_proficiency_test &&
+      data.english_proficiency_test !== "none"
+    ) {
+      if (
+        data.english_test_overall_score !== undefined &&
+        data.english_test_overall_score !== null
+      ) {
+        // Use the direct total score from frontend
+        // already set in sanitizedBody
+      }
+      // Fallback for legacy clients that still send module scores
+      else if (data.english_test_scores) {
+        data.english_test_overall_score = computeEnglishTestOverallScore(
+          data.english_proficiency_test,
+          data.english_test_scores,
+        );
+      }
+    } else {
+      data.english_test_overall_score = null;
     }
+
+    // Ensure we don't store modular scores (optional: set to null)
+    data.english_test_scores = null;
 
     const lead = await Lead.create(data);
 
@@ -199,7 +228,7 @@ export async function updateLead(req, res) {
       "grades_cgpa",
       "board_university",
       "english_proficiency_test",
-      "english_test_scores",
+      "english_test_overall_score",
     ];
 
     const changes = [];
@@ -213,21 +242,33 @@ export async function updateLead(req, res) {
     });
 
     let updateData = { ...sanitizedBody };
+
+    // Handle total score logic
     if (
-      sanitizedBody.english_proficiency_test ||
-      sanitizedBody.english_test_scores
+      sanitizedBody.english_proficiency_test &&
+      sanitizedBody.english_proficiency_test !== "none"
     ) {
-      const testType =
-        sanitizedBody.english_proficiency_test || lead.english_proficiency_test;
-      const scores =
-        sanitizedBody.english_test_scores || lead.english_test_scores;
-      if (testType && scores) {
+      if (
+        sanitizedBody.english_test_overall_score !== undefined &&
+        sanitizedBody.english_test_overall_score !== null
+      ) {
+        // Direct score provided – use it
+        updateData.english_test_overall_score =
+          sanitizedBody.english_test_overall_score;
+      }
+      // Fallback for legacy clients: compute from module scores (if any)
+      else if (sanitizedBody.english_test_scores) {
         updateData.english_test_overall_score = computeEnglishTestOverallScore(
-          testType,
-          scores,
+          sanitizedBody.english_proficiency_test,
+          sanitizedBody.english_test_scores,
         );
       }
+    } else {
+      updateData.english_test_overall_score = null;
     }
+
+    // We no longer store modular scores – set to null
+    updateData.english_test_scores = null;
 
     await lead.update(updateData);
 
