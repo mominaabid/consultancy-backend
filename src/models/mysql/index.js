@@ -8,6 +8,7 @@ import Document from "./Document.js";
 import Application from "./Application.js";
 import Payment from "./Payment.js";
 import MobileDoc from "./tbl_mobile_docs.js";
+import LeadEducation from "./LeadEducation.js";
 
 Lead.belongsTo(User, {
   foreignKey: "counsellor_id",
@@ -117,6 +118,17 @@ User.hasMany(LeadActivityLog, {
   as: "activityLogs",
 });
 
+Lead.hasMany(LeadEducation, {
+  foreignKey: "lead_id",
+  as: "education",
+  onDelete: "CASCADE",
+});
+
+LeadEducation.belongsTo(Lead, {
+  foreignKey: "lead_id",
+  as: "lead",
+});
+
 const db = {
   sequelize,
   Sequelize: sequelize.Sequelize,
@@ -129,6 +141,7 @@ const db = {
   Application,
   Payment,
   MobileDoc,
+  LeadEducation,
 };
 
 export default db;

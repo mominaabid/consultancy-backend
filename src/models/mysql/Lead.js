@@ -92,6 +92,11 @@ const Lead = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    has_entered_counseling: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
   },
   {
     tableName: "leads",

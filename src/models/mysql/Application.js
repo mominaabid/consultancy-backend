@@ -17,12 +17,12 @@ const Application = sequelize.define(
     nationality: DataTypes.STRING,
     profile_picture: DataTypes.TEXT,
 
-    last_degree: DataTypes.STRING,
-    institute: DataTypes.STRING,
-    cgpa: DataTypes.STRING,
-    passing_year: DataTypes.INTEGER,
-    english_test: DataTypes.STRING,
-    test_score: DataTypes.STRING,
+    study_level: DataTypes.STRING,
+    board_university: DataTypes.STRING,
+    grades_cgpa: DataTypes.STRING,
+    year_awarded: DataTypes.INTEGER,
+    english_proficiency_test: DataTypes.STRING,
+    english_test_overall_score: DataTypes.STRING,
 
     target_country: DataTypes.STRING,
     target_university: DataTypes.STRING,

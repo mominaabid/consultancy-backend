@@ -143,7 +143,18 @@ export const getStudentsWithApplications = async (req, res) => {
 
     const leads = await Lead.findAll({
       where: leadWhere,
-      attributes: ["id", "name", "email", "phone", "status", "created_at"],
+      attributes: [
+        "id",
+        "name",
+        "email",
+        "phone",
+        "status",
+        "created_at",
+        "study_level",
+        "grades_cgpa",
+        "english_proficiency_test",
+        "english_test_overall_score",
+      ],
       include: [
         {
           model: Application,
@@ -169,10 +180,10 @@ export const getStudentsWithApplications = async (req, res) => {
       email: lead.email,
       phone: lead.phone,
       status: lead.status,
-      last_degree: lead.study_level || "",
-      cgpa: lead.grades_cgpa || "",
-      english_test: lead.english_proficiency_test || "",
-      test_score: lead.english_test_overall_score || "",
+      study_level: lead.study_level || "",
+      grades_cgpa: lead.grades_cgpa || "",
+      english_proficiency_test: lead.english_proficiency_test || "",
+      english_test_overall_score: lead.english_test_overall_score || "",
 
       applications: lead.applications?.map((app) => ({
         id: app.id,
@@ -184,10 +195,12 @@ export const getStudentsWithApplications = async (req, res) => {
         full_name: app.full_name,
         email: app.email,
         phone: app.phone,
-        last_degree: app.last_degree,
-        cgpa: app.cgpa,
-        english_test: app.english_test,
-        test_score: app.test_score,
+        study_level: app.study_level,
+        grades_cgpa: app.grades_cgpa,
+        english_proficiency_test: app.english_proficiency_test,
+        english_test_overall_score: app.english_test_overall_score,
+        year_awarded: app.year_awarded, // NEW
+        board_university: app.board_university, // NEW
         counselor_notes: app.counselor_notes,
         created_at: app.created_at,
         student_id: lead.id,
@@ -224,11 +237,12 @@ export const getStudentApplications = async (req, res) => {
       email: app.email,
       phone: app.phone,
       cnic: app.cnic,
-      last_degree: app.last_degree,
-      cgpa: app.cgpa,
-      passing_year: app.passing_year,
-      english_test: app.english_test,
-      test_score: app.test_score,
+      study_level: app.study_level,
+      grades_cgpa: app.grades_cgpa,
+      year_awarded: app.year_awarded,
+      board_university: app.board_university, // NEW
+      english_proficiency_test: app.english_proficiency_test,
+      english_test_overall_score: app.english_test_overall_score,
       target_university: app.target_university,
       course: app.course,
       target_country: app.target_country,
@@ -344,10 +358,12 @@ export const createApplication = async (req, res) => {
       target_country: applicationData.target_country,
       deadline: applicationData.deadline,
       status: applicationData.status || "inquiry",
-      last_degree: applicationData.last_degree,
-      cgpa: applicationData.cgpa,
-      english_test: applicationData.english_test,
-      test_score: applicationData.test_score,
+      study_level: applicationData.study_level,
+      grades_cgpa: applicationData.grades_cgpa,
+      english_proficiency_test: applicationData.english_proficiency_test,
+      english_test_overall_score: applicationData.english_test_overall_score,
+      year_awarded: applicationData.year_awarded, // NEW
+      board_university: applicationData.board_university, // NEW
       counselor_notes: applicationData.counselor_notes,
     });
 

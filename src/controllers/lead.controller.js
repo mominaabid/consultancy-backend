@@ -6,7 +6,7 @@ import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js"
 import Conversation from "../models/mongo/Conversation.js";
 import sseManager from "../utils/sseManager.js";
 
-const { Lead, User, PasswordResetToken } = db;
+const { Lead, User, PasswordResetToken, LeadEducation } = db;
 
 function computeEnglishTestOverallScore(testType, scores) {
   if (!testType || !scores) return null;
@@ -49,8 +49,8 @@ function sanitizeLeadData(data) {
     }
   }
 
-  // Integer fields
-  const intFields = ["year_awarded", "counsellor_id"];
+  // Integer fields (keep counsellor_id, remove year_awarded etc. as they are deprecated)
+  const intFields = ["counsellor_id"];
   for (const field of intFields) {
     if (
       sanitized[field] === "" ||
@@ -87,8 +87,120 @@ function sanitizeLeadData(data) {
     sanitized.english_test_overall_score = null;
   }
 
+  // Remove deprecated single-degree fields if present, to avoid confusion
+  delete sanitized.study_level;
+  delete sanitized.year_awarded;
+  delete sanitized.grades_cgpa;
+  delete sanitized.board_university;
+
   return sanitized;
 }
+
+// Helper to handle education entries
+async function handleLeadEducation(leadId, educationArray, transaction = null) {
+  if (!educationArray || !Array.isArray(educationArray)) return;
+
+  // Delete existing entries
+  await LeadEducation.destroy({ where: { lead_id: leadId }, transaction });
+
+  // Insert new ones
+  if (educationArray.length > 0) {
+    const educationData = educationArray.map((edu) => ({
+      lead_id: leadId,
+      degree: edu.degree,
+      year_awarded: edu.year_awarded,
+      grades_cgpa: edu.grades_cgpa || null,
+      board_university: edu.board_university || null,
+    }));
+    await LeadEducation.bulkCreate(educationData, { transaction });
+  }
+}
+
+// ------------------------------------------------------------
+// NEW HELPER: handle first entry into Counseling
+// ------------------------------------------------------------
+async function handleFirstCounselingEntry(lead, actor) {
+  if (!lead.email) {
+    console.log(`Lead ${lead.id} has no email; cannot send password setup.`);
+    return;
+  }
+
+  if (lead.has_entered_counseling) {
+    console.log(`Lead ${lead.id} already entered counseling before; skipping.`);
+    return;
+  }
+
+  // Find or create student user
+  let student = await User.findOne({
+    where: { email: lead.email, role: "student" },
+  });
+  if (!student) {
+    student = await User.create({
+      name: lead.name,
+      email: lead.email,
+      password_hash: "PENDING_SETUP",
+      role: "student",
+      is_active: false,
+    });
+  } else {
+    // Clear any existing reset tokens for this user
+    await PasswordResetToken.destroy({ where: { user_id: student.id } });
+  }
+
+  // Link lead to student user if not already linked
+  if (!lead.user_id || lead.user_id !== student.id) {
+    lead.user_id = student.id;
+    await lead.save();
+  }
+
+  // Generate password reset token (used for setup)
+  const token = crypto.randomBytes(32).toString("hex");
+  await PasswordResetToken.create({
+    user_id: student.id,
+    token,
+    expires_at: new Date(Date.now() + 86400000), // 24 hours
+  });
+
+  const setupLink = `${process.env.FRONTEND_URL}/setup-password?token=${token}`;
+  await sendPasswordSetupEmail({
+    name: lead.name,
+    email: lead.email,
+    setupLink,
+  });
+
+  // Mark that the lead has entered counseling
+  await lead.update({ has_entered_counseling: true });
+
+  // Log the email send
+  await logActivity({
+    leadId: lead.id,
+    actionType: "setup_email_sent",
+    note: `Password setup email sent to ${lead.email} (first entry into Counseling)`,
+    performedBy: actor.id,
+    performedByRole: actor.role,
+    performedByName: actor.name,
+  });
+
+  // Create conversation if counsellor assigned
+  if (lead.counsellor_id) {
+    const counsellor = await User.findByPk(lead.counsellor_id, {
+      attributes: ["name"],
+    });
+    const exists = await Conversation.findOne({
+      where: { student_id: student.id, counsellor_id: lead.counsellor_id },
+    });
+    if (!exists) {
+      await Conversation.create({
+        student_id: student.id,
+        counsellor_id: lead.counsellor_id,
+        student_name: lead.name,
+        counsellor_name: counsellor?.name || "Counsellor",
+        last_message: "",
+      });
+    }
+  }
+}
+// ------------------------------------------------------------
 
 export async function createLead(req, res) {
   try {
@@ -134,6 +246,11 @@ export async function createLead(req, res) {
 
     const lead = await Lead.create(data);
 
+    // Handle education entries
+    if (req.body.education && Array.isArray(req.body.education)) {
+      await handleLeadEducation(lead.id, req.body.education);
+    }
+
     await logActivity({
       leadId: lead.id,
       actionType: "lead_created",
@@ -159,7 +276,23 @@ export async function createLead(req, res) {
       }
     }
 
-    res.status(201).json(lead);
+    // --------------------------------------------------------
+    // NEW: If lead is created directly in Counseling, send password setup email (only once)
+    // --------------------------------------------------------
+    if (lead.status === "counseling" && !lead.has_entered_counseling) {
+      await handleFirstCounselingEntry(lead, req.user);
+    }
+    // --------------------------------------------------------
+
+    // Return lead with education included
+    const leadWithEducation = await Lead.findByPk(lead.id, {
+      include: [
+        { model: User, as: "counsellor" },
+        { model: LeadEducation, as: "education" },
+      ],
+    });
+
+    res.status(201).json(leadWithEducation);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -190,7 +323,10 @@ export async function getAllLeads(req, res) {
 export async function getLeadById(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id, {
-      include: [{ model: User, as: "counsellor" }],
+      include: [
+        { model: User, as: "counsellor" },
+        { model: LeadEducation, as: "education" },
+      ],
     });
 
     if (!lead || lead.is_deleted) {
@@ -212,32 +348,51 @@ export async function updateLead(req, res) {
     // Sanitize the incoming update data
     let sanitizedBody = sanitizeLeadData(req.body);
 
+    // Fields that can be updated (excluding deprecated single-degree fields)
     const fields = [
       "name",
       "email",
       "phone",
       "preferred_country",
-      "study_level",
       "source",
       "dob",
       "marital_status",
       "father_name",
       "father_contact",
       "home_address",
-      "year_awarded",
-      "grades_cgpa",
-      "board_university",
       "english_proficiency_test",
       "english_test_overall_score",
     ];
 
     const changes = [];
+
+    const numericFields = ["english_test_overall_score", "counsellor_id"];
+
     fields.forEach((field) => {
-      if (
-        sanitizedBody[field] !== undefined &&
-        String(sanitizedBody[field]) !== String(lead[field])
-      ) {
-        changes.push(`${field}: "${lead[field]}" → "${sanitizedBody[field]}"`);
+      if (sanitizedBody[field] === undefined) return;
+
+      const oldVal = lead[field];
+      const newVal = sanitizedBody[field];
+      let isChanged = false;
+
+      if (numericFields.includes(field)) {
+        // Compare numerically
+        const oldNum =
+          oldVal === null || oldVal === "" ? null : parseFloat(oldVal);
+        const newNum =
+          newVal === null || newVal === "" ? null : parseFloat(newVal);
+        if (oldNum !== newNum && !(isNaN(oldNum) && isNaN(newNum))) {
+          isChanged = true;
+        }
+      } else {
+        // String comparison for other fields
+        if (String(oldVal) !== String(newVal)) {
+          isChanged = true;
+        }
+      }
+
+      if (isChanged) {
+        changes.push(`${field}: "${oldVal}" → "${newVal}"`);
       }
     });
 
@@ -272,6 +427,12 @@ export async function updateLead(req, res) {
 
     await lead.update(updateData);
 
+    // Handle education entries if provided
+    if (req.body.education !== undefined) {
+      await handleLeadEducation(lead.id, req.body.education);
+      changes.push("Education entries updated");
+    }
+
     await logActivity({
       leadId: lead.id,
       actionType: "lead_updated",
@@ -284,7 +445,15 @@ export async function updateLead(req, res) {
       performedByName: req.user.name,
     });
 
-    res.json(lead);
+    // Return updated lead with education
+    const updatedLead = await Lead.findByPk(lead.id, {
+      include: [
+        { model: User, as: "counsellor" },
+        { model: LeadEducation, as: "education" },
+      ],
+    });
+
+    res.json(updatedLead);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -404,80 +573,17 @@ export async function updateStage(req, res) {
       });
     }
 
+    // --------------------------------------------------------
+    // MODIFIED: Send password setup email ONLY on first entry into Counseling
+    // --------------------------------------------------------
     const isMovingToCounseling =
       status === "counseling" && oldStatus !== "counseling";
 
     if (isMovingToCounseling && lead.email) {
-      const existingUser = await User.findOne({ where: { email: lead.email } });
-
-      let student;
-
-      if (existingUser && existingUser.role === "student") {
-        student = existingUser;
-        await PasswordResetToken.destroy({ where: { user_id: student.id } });
-
-        if (lead.user_id !== student.id) {
-          lead.user_id = student.id;
-          await lead.save();
-        }
-      } else if (!existingUser) {
-        student = await User.create({
-          name: lead.name,
-          email: lead.email,
-          password_hash: "PENDING_SETUP",
-          role: "student",
-          is_active: false,
-        });
-
-        lead.user_id = student.id;
-        await lead.save();
-      }
-
-      const token = crypto.randomBytes(32).toString("hex");
-
-      await PasswordResetToken.create({
-        user_id: student.id,
-        token,
-        expires_at: new Date(Date.now() + 86400000),
-      });
-
-      const setupLink = `${process.env.FRONTEND_URL}/setup-password?token=${token}`;
-
-      await sendPasswordSetupEmail({
-        name: lead.name,
-        email: lead.email,
-        setupLink,
-      });
-
-      await logActivity({
-        leadId: lead.id,
-        actionType: "setup_email_sent",
-        note: `Password setup email sent to ${lead.email}`,
-        performedBy: req.user.id,
-        performedByRole: req.user.role,
-        performedByName: req.user.name,
-      });
-
-      if (lead.counsellor_id) {
-        const counsellor = await User.findByPk(lead.counsellor_id, {
-          attributes: ["name"],
-        });
-
-        const exists = await Conversation.findOne({
-          where: { student_id: student.id, counsellor_id: lead.counsellor_id },
-        });
-
-        if (!exists) {
-          await Conversation.create({
-            student_id: student.id,
-            counsellor_id: lead.counsellor_id,
-            student_name: lead.name,
-            counsellor_name: counsellor?.name || "Counsellor",
-            last_message: "",
-          });
-        }
-      }
+      // Use the helper – it will check lead.has_entered_counseling internally
+      await handleFirstCounselingEntry(lead, req.user);
     }
+    // --------------------------------------------------------
 
     res.json({ message: "Stage updated successfully", lead });
   } catch (error) {
