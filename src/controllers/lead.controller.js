@@ -335,7 +335,11 @@ export async function getAllLeads(req, res) {
 
     const leads = await Lead.findAll({
       where,
-      include: [{ model: User, as: "counsellor" }],
+      include: [
+        { model: User, as: "counsellor" },
+        { model: LeadEducation, as: "education" },
+      ],
+
       order: [["createdAt", "DESC"]],
     });
 
