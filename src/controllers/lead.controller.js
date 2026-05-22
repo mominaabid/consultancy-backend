@@ -8,6 +8,32 @@ import sseManager from "../utils/sseManager.js";
 
 const { Lead, User, PasswordResetToken, LeadEducation } = db;
 
+async function ensureConversation(
+  studentId,
+  counsellorId,
+  studentName,
+  counsellorName,
+) {
+  if (!studentId || !counsellorId) return null;
+  let conversation = await Conversation.findOne({
+    student_id: studentId,
+    counsellor_id: counsellorId,
+  });
+  if (!conversation) {
+    conversation = await Conversation.create({
+      student_id: studentId,
+      counsellor_id: counsellorId,
+      student_name: studentName,
+      counsellor_name: counsellorName,
+      last_message: "",
+    });
+    console.log(
+      `[Chat] Created conversation: student ${studentId} ↔ counsellor ${counsellorId}`,
+    );
+  }
+  return conversation;
+}
+
 function computeEnglishTestOverallScore(testType, scores) {
   if (!testType || !scores) return null;
 
@@ -480,6 +506,21 @@ export async function assignCounsellor(req, res) {
 
     lead.counsellor_id = newCounsellorId;
     await lead.save();
+
+    // ✅ If a new counsellor is assigned and the lead has a student user, ensure conversation exists
+    if (newCounsellorId && lead.user_id) {
+      const studentUser = await User.findByPk(lead.user_id, {
+        attributes: ["name"],
+      });
+      if (studentUser) {
+        await ensureConversation(
+          lead.user_id,
+          newCounsellorId,
+          lead.name,
+          newCounsellor?.name || "Counsellor",
+        );
+      }
+    }
 
     await logActivity({
       leadId: lead.id,

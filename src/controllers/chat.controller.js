@@ -6,6 +6,59 @@ import db from "../models/mysql/index.js";
 import { Op } from "sequelize";
 const { Lead, User } = db;
 
+async function isConversationCurrentlyAssigned(conversation, userRole, userId) {
+  if (userRole === "student") {
+    // Find the lead belonging to this student (by user_id)
+    const lead = await Lead.findOne({
+      where: { user_id: userId, is_deleted: false },
+      attributes: ["counsellor_id"],
+    });
+    if (!lead) return false;
+    return lead.counsellor_id === conversation.counsellor_id;
+  } else if (userRole === "counsellor") {
+    // Find a lead where counsellor_id = userId and lead's user_id = conversation.student_id
+    const lead = await Lead.findOne({
+      where: {
+        counsellor_id: userId,
+        user_id: conversation.student_id,
+        is_deleted: false,
+      },
+      attributes: ["id"],
+    });
+    return !!lead;
+  }
+  return false;
+}
+
+/**
+ * Ensure a conversation exists between a student and a counsellor.
+ * Creates it if missing.
+ */
+async function ensureConversation(
+  studentId,
+  counsellorId,
+  studentName,
+  counsellorName,
+) {
+  let conversation = await Conversation.findOne({
+    student_id: studentId,
+    counsellor_id: counsellorId,
+  });
+  if (!conversation) {
+    conversation = await Conversation.create({
+      student_id: studentId,
+      counsellor_id: counsellorId,
+      student_name: studentName,
+      counsellor_name: counsellorName,
+      last_message: "",
+    });
+    console.log(
+      `[Chat] Created conversation: student ${studentId} ↔ counsellor ${counsellorId}`,
+    );
+  }
+  return conversation;
+}
+
 export async function sendMessage(req, res) {
   try {
     const { conversationId, content } = req.body;
@@ -20,6 +73,19 @@ export async function sendMessage(req, res) {
     const conversation = await Conversation.findById(conversationId);
     if (!conversation)
       return res.status(404).json({ message: "Conversation not found." });
+
+    // Check if this conversation is currently assigned
+    const isAssigned = await isConversationCurrentlyAssigned(
+      conversation,
+      user.role,
+      user.id,
+    );
+    if (!isAssigned) {
+      return res.status(403).json({
+        message:
+          "Cannot send message: this counsellor/student is no longer assigned.",
+      });
+    }
 
     if (
       conversation.student_id !== user.id &&
@@ -161,11 +227,24 @@ export async function getConversations(req, res) {
     const query =
       role === "student" ? { student_id: userId } : { counsellor_id: userId };
 
-    const conversations = await Conversation.find(query).sort({
+    let conversations = await Conversation.find(query).sort({
       last_message_at: -1,
     });
 
-    res.json(conversations);
+    // Attach is_currently_assigned to each conversation
+    const enrichedConversations = [];
+    for (let conv of conversations) {
+      const isAssigned = await isConversationCurrentlyAssigned(
+        conv,
+        role,
+        userId,
+      );
+      const convObj = conv.toObject();
+      convObj.is_currently_assigned = isAssigned;
+      enrichedConversations.push(convObj);
+    }
+
+    res.json(enrichedConversations);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
