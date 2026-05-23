@@ -2,6 +2,7 @@ import db from "../../models/mysql/index.js";
 import { deleteFile, uploadFile } from "../../services/fileUpload.service.js";
 import { logActivity } from "../../services/activityLog.service.js";
 import sseManager from "../../utils/sseManager.js";
+import { storeNotification } from "../../utils/notificationHelper.js";
 
 const { Document, Lead, User, Application } = db;
 
@@ -76,6 +77,18 @@ export async function verifyDocument(req, res) {
         message: `Your document (${docTypeLabel}) has been verified.`,
         timestamp: new Date().toISOString(),
       });
+
+      await storeNotification(
+        lead.user_id,
+        "document_verified",
+        `Your document (${docTypeLabel}) has been verified.`,
+        {
+          documentId: document.id,
+          applicationId: document.application_id,
+          docType: document.doc_type,
+          reviewerId: req.user.id,
+        },
+      );
     }
 
     res.json({ success: true, message: "Document verified successfully" });
@@ -124,6 +137,19 @@ export async function rejectDocument(req, res) {
         message: `Your document (${docTypeLabel}) was rejected. Reason: ${reason || "No reason provided"}`,
         timestamp: new Date().toISOString(),
       });
+
+      await storeNotification(
+        lead.user_id,
+        "document_rejected",
+        `Your document (${docTypeLabel}) was rejected. Reason: ${reason || "No reason provided"}`,
+        {
+          documentId: document.id,
+          applicationId: document.application_id,
+          docType: document.doc_type,
+          rejectionReason: reason || null,
+          reviewerId: req.user.id,
+        },
+      );
     }
 
     res.json({ success: true, message: "Document rejected successfully" });
@@ -220,6 +246,19 @@ export async function uploadForStudent(req, res) {
         message: `A new document (${docTypeLabel}) has been shared with you by your ${userRole === "admin" ? "administrator" : "counsellor"}.`,
         timestamp: new Date().toISOString(),
       });
+
+      await storeNotification(
+        lead.user_id,
+        "document_shared",
+        `A new document (${docTypeLabel}) has been shared with you by your ${userRole === "admin" ? "administrator" : "counsellor"}.`,
+        {
+          documentId: document.id,
+          applicationId: application.id,
+          docType: doc_type || "other",
+          sharedByRole: userRole,
+          sharedByName: req.user.name,
+        },
+      );
     }
 
     res.status(201).json({

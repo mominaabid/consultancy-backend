@@ -9,6 +9,8 @@ import Application from "./Application.js";
 import Payment from "./Payment.js";
 import MobileDoc from "./tbl_mobile_docs.js";
 import LeadEducation from "./LeadEducation.js";
+import Notification from "./Notification.js";
+
 
 Lead.belongsTo(User, {
   foreignKey: "counsellor_id",
@@ -142,6 +144,7 @@ const db = {
   Payment,
   MobileDoc,
   LeadEducation,
+  Notification
 };
 
 export default db;

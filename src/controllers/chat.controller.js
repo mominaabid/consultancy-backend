@@ -2,8 +2,11 @@ import Conversation from "../models/mongo/Conversation.js";
 import Message from "../models/mongo/Message.js";
 import { publishToChannel } from "../services/ably.service.js";
 import { sendChatNotificationEmail } from "../services/email.service.js";
+import sseManager from "../utils/sseManager.js";
 import db from "../models/mysql/index.js";
 import { Op } from "sequelize";
+import { storeNotification } from "../utils/notificationHelper.js"; // <-- ADDED
+
 const { Lead, User } = db;
 
 async function isConversationCurrentlyAssigned(conversation, userRole, userId) {
@@ -147,6 +150,76 @@ export async function sendMessage(req, res) {
       preview: content.trim().slice(0, 60),
       isFromMe: true,
     });
+
+    // ---------- SSE NOTIFICATION FOR RECIPIENT (BELL) ----------
+    try {
+      const senderLabel = user.role === "counsellor" ? "Counsellor" : "Student";
+      const sseEvent = {
+        type: "new_chat_message",
+        message: `${senderLabel} ${user.name}: ${content.trim()}`,
+        senderName: user.name,
+        senderRole: user.role,
+        conversationId: conversationId,
+        preview: content.trim(),
+        timestamp: new Date().toISOString(),
+      };
+      sseManager.sendToUser(recipientId, sseEvent);
+      console.log(`🔔 SSE chat notification sent to user ${recipientId}`);
+    } catch (sseError) {
+      console.error("❌ Failed to send SSE notification:", sseError);
+      // Don't break the response if SSE fails
+    }
+
+    // ---------- STORE NOTIFICATION IN DATABASE (PERSISTENT) ----------
+    try {
+      const preview = content.trim().slice(0, 60);
+      const senderLabel = user.role === "counsellor" ? "Counsellor" : "Student";
+      await storeNotification(
+        recipientId,
+        "chat_message",
+        `New message from ${senderLabel} ${user.name}: ${preview}`,
+        {
+          conversationId,
+          senderName: user.name,
+          senderRole: user.role,
+          preview,
+        }
+      );
+      console.log(`💾 Chat notification stored for user ${recipientId}`);
+    } catch (storeError) {
+      console.error("❌ Failed to store notification:", storeError);
+      // Don't break the response if storage fails
+    }
+
+    // ---------- SEND EMAIL NOTIFICATION TO RECIPIENT ----------
+    try {
+      const recipientUser = await User.findOne({
+        where: { id: recipientId },
+        attributes: ["email", "name"],
+      });
+
+      if (recipientUser && recipientUser.email) {
+        await sendChatNotificationEmail({
+          recipientName: recipientUser.name || "User",
+          recipientEmail: recipientUser.email,
+          senderName: user.name,
+          senderRole: user.role,
+          messagePreview: content.trim(),
+          conversationId: conversationId,
+        });
+        console.log(
+          `📧 Chat notification email sent to ${recipientUser.email}`,
+        );
+      } else {
+        console.warn(
+          `⚠️ Could not find user or email for recipientId: ${recipientId}`,
+        );
+      }
+    } catch (emailError) {
+      // Don't break the message sending if email fails
+      console.error("❌ Failed to send chat notification email:", emailError);
+    }
+    // ------------------------------------------------------------
 
     res.status(201).json(messageData);
   } catch (error) {

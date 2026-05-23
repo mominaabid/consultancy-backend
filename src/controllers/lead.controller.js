@@ -5,6 +5,7 @@ import { logActivity } from "../services/activityLog.service.js";
 import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js";
 import Conversation from "../models/mongo/Conversation.js";
 import sseManager from "../utils/sseManager.js";
+import { storeNotification } from "../utils/notificationHelper.js";
 
 const { Lead, User, PasswordResetToken, LeadEducation } = db;
 
@@ -67,7 +68,6 @@ function computeEnglishTestOverallScore(testType, scores) {
 function sanitizeLeadData(data) {
   const sanitized = { ...data };
 
-  // Date fields
   const dateFields = ["dob"];
   for (const field of dateFields) {
     if (sanitized[field] === "" || sanitized[field] === "Invalid date") {
@@ -75,7 +75,6 @@ function sanitizeLeadData(data) {
     }
   }
 
-  // Integer fields (keep counsellor_id, remove year_awarded etc. as they are deprecated)
   const intFields = ["counsellor_id"];
   for (const field of intFields) {
     if (
@@ -91,7 +90,6 @@ function sanitizeLeadData(data) {
     }
   }
 
-  // JSON field - we keep it but will usually be null now
   if (
     sanitized.english_test_scores === "" ||
     sanitized.english_test_scores === null
@@ -99,7 +97,6 @@ function sanitizeLeadData(data) {
     sanitized.english_test_scores = null;
   }
 
-  // Handle total score
   if (
     sanitized.english_test_overall_score === "" ||
     sanitized.english_test_overall_score === null
@@ -113,7 +110,6 @@ function sanitizeLeadData(data) {
     sanitized.english_test_overall_score = null;
   }
 
-  // Remove deprecated single-degree fields if present, to avoid confusion
   delete sanitized.study_level;
   delete sanitized.year_awarded;
   delete sanitized.grades_cgpa;
@@ -122,14 +118,11 @@ function sanitizeLeadData(data) {
   return sanitized;
 }
 
-// Helper to handle education entries
 async function handleLeadEducation(leadId, educationArray, transaction = null) {
   if (!educationArray || !Array.isArray(educationArray)) return;
 
-  // Delete existing entries
   await LeadEducation.destroy({ where: { lead_id: leadId }, transaction });
 
-  // Insert new ones
   if (educationArray.length > 0) {
     const educationData = educationArray.map((edu) => ({
       lead_id: leadId,
@@ -142,9 +135,6 @@ async function handleLeadEducation(leadId, educationArray, transaction = null) {
   }
 }
 
-// ------------------------------------------------------------
-// NEW HELPER: handle first entry into Counseling
-// ------------------------------------------------------------
 async function handleFirstCounselingEntry(lead, actor) {
   if (!lead.email) {
     console.log(`Lead ${lead.id} has no email; cannot send password setup.`);
@@ -156,7 +146,6 @@ async function handleFirstCounselingEntry(lead, actor) {
     return;
   }
 
-  // Find or create student user
   let student = await User.findOne({
     where: { email: lead.email, role: "student" },
   });
@@ -169,22 +158,19 @@ async function handleFirstCounselingEntry(lead, actor) {
       is_active: false,
     });
   } else {
-    // Clear any existing reset tokens for this user
     await PasswordResetToken.destroy({ where: { user_id: student.id } });
   }
 
-  // Link lead to student user if not already linked
   if (!lead.user_id || lead.user_id !== student.id) {
     lead.user_id = student.id;
     await lead.save();
   }
 
-  // Generate password reset token (used for setup)
   const token = crypto.randomBytes(32).toString("hex");
   await PasswordResetToken.create({
     user_id: student.id,
     token,
-    expires_at: new Date(Date.now() + 86400000), // 24 hours
+    expires_at: new Date(Date.now() + 86400000),
   });
 
   const setupLink = `${process.env.FRONTEND_URL}/setup-password?token=${token}`;
@@ -194,10 +180,8 @@ async function handleFirstCounselingEntry(lead, actor) {
     setupLink,
   });
 
-  // Mark that the lead has entered counseling
   await lead.update({ has_entered_counseling: true });
 
-  // Log the email send
   await logActivity({
     leadId: lead.id,
     actionType: "setup_email_sent",
@@ -207,7 +191,6 @@ async function handleFirstCounselingEntry(lead, actor) {
     performedByName: actor.name,
   });
 
-  // Create conversation if counsellor assigned
   if (lead.counsellor_id) {
     const counsellor = await User.findByPk(lead.counsellor_id, {
       attributes: ["name"],
@@ -226,14 +209,11 @@ async function handleFirstCounselingEntry(lead, actor) {
     }
   }
 }
-// ------------------------------------------------------------
 
 export async function createLead(req, res) {
   try {
-    // Sanitize incoming data
     let sanitizedBody = sanitizeLeadData(req.body);
 
-    // Handle counsellor assignment logic
     const data = {
       ...sanitizedBody,
       counsellor_id:
@@ -244,7 +224,6 @@ export async function createLead(req, res) {
           : Number(sanitizedBody.counsellor_id),
     };
 
-    // Compute overall score only if direct score is not provided
     if (
       data.english_proficiency_test &&
       data.english_proficiency_test !== "none"
@@ -253,11 +232,8 @@ export async function createLead(req, res) {
         data.english_test_overall_score !== undefined &&
         data.english_test_overall_score !== null
       ) {
-        // Use the direct total score from frontend
-        // already set in sanitizedBody
-      }
-      // Fallback for legacy clients that still send module scores
-      else if (data.english_test_scores) {
+        // already set
+      } else if (data.english_test_scores) {
         data.english_test_overall_score = computeEnglishTestOverallScore(
           data.english_proficiency_test,
           data.english_test_scores,
@@ -267,12 +243,10 @@ export async function createLead(req, res) {
       data.english_test_overall_score = null;
     }
 
-    // Ensure we don't store modular scores (optional: set to null)
     data.english_test_scores = null;
 
     const lead = await Lead.create(data);
 
-    // Handle education entries
     if (req.body.education && Array.isArray(req.body.education)) {
       await handleLeadEducation(lead.id, req.body.education);
     }
@@ -287,12 +261,12 @@ export async function createLead(req, res) {
       performedByName: req.user.name,
     });
 
+    // ---------- Email for counsellor (original, kept as is) ----------
     if (lead.counsellor_id) {
       const counsellorUser = await User.findOne({
         where: { id: lead.counsellor_id, role: "counsellor" },
         attributes: ["id", "name", "email"],
       });
-
       if (counsellorUser?.email) {
         sendLeadAssignmentEmail({
           counsellorEmail: counsellorUser.email,
@@ -302,15 +276,91 @@ export async function createLead(req, res) {
       }
     }
 
-    // --------------------------------------------------------
-    // NEW: If lead is created directly in Counseling, send password setup email (only once)
-    // --------------------------------------------------------
+    // ========== NEW: If counsellor created the lead → notify all admins ==========
+    if (req.user.role === "counsellor") {
+      const admins = await User.findAll({
+        where: { role: "admin", is_active: true },
+        attributes: ["id", "name", "email"],
+      });
+
+      for (const admin of admins) {
+        const sseEvent = {
+          type: "counsellor_added_lead",
+          message: `Counsellor "${req.user.name}" has added a new lead: "${lead.name}".`,
+          leadId: lead.id,
+          leadName: lead.name,
+          counsellorId: req.user.id,
+          counsellorName: req.user.name,
+        };
+        sseManager.sendToUser(admin.id.toString(), sseEvent);
+
+        await storeNotification(
+          admin.id,
+          "counsellor_added_lead",
+          `Counsellor "${req.user.name}" added lead "${lead.name}".`,
+          {
+            leadId: lead.id,
+            leadName: lead.name,
+            counsellorId: req.user.id,
+            counsellorName: req.user.name,
+          },
+        );
+      }
+    }
+
+    // ========== MODIFIED: Notify assigned counsellor only if different from creator ==========
+    if (lead.counsellor_id) {
+      const counsellorUser = await User.findOne({
+        where: { id: lead.counsellor_id, role: "counsellor" },
+        attributes: ["id", "name", "email"],
+      });
+
+      if (counsellorUser) {
+        // Skip self-notification when the creator is the same counsellor
+        const isSelfAssignment =
+          req.user.role === "counsellor" && req.user.id === lead.counsellor_id;
+
+        if (!isSelfAssignment) {
+          // Email (already present, but we send again? Keeping original behaviour)
+          if (counsellorUser.email) {
+            sendLeadAssignmentEmail({
+              counsellorEmail: counsellorUser.email,
+              counsellorName: counsellorUser.name,
+              lead: lead.toJSON(),
+            }).catch((err) => console.error("Background email error:", err));
+          }
+
+          // SSE event for real-time bell notification
+          const sseEvent = {
+            type: "lead_created",
+            message: `New lead "${lead.name}" has been created and assigned to you.`,
+            leadId: lead.id,
+            leadName: lead.name,
+            counsellorId: counsellorUser.id,
+            counsellorName: counsellorUser.name,
+          };
+          sseManager.sendToUser(counsellorUser.id.toString(), sseEvent);
+
+          // Store in database (persistent notification)
+          await storeNotification(
+            counsellorUser.id,
+            "lead_created",
+            `New lead "${lead.name}" has been created and assigned to you.`,
+            {
+              leadId: lead.id,
+              leadName: lead.name,
+              counsellorId: counsellorUser.id,
+              counsellorName: counsellorUser.name,
+            },
+          );
+        }
+      }
+    }
+
     if (lead.status === "counseling" && !lead.has_entered_counseling) {
       await handleFirstCounselingEntry(lead, req.user);
     }
-    // --------------------------------------------------------
 
-    // Return lead with education included
     const leadWithEducation = await Lead.findByPk(lead.id, {
       include: [
         { model: User, as: "counsellor" },
@@ -339,7 +389,6 @@ export async function getAllLeads(req, res) {
         { model: User, as: "counsellor" },
         { model: LeadEducation, as: "education" },
       ],
-
       order: [["createdAt", "DESC"]],
     });
 
@@ -375,10 +424,8 @@ export async function updateLead(req, res) {
     const lead = await Lead.findByPk(req.params.id);
     if (!lead) return res.status(404).json({ message: "Lead not found." });
 
-    // Sanitize the incoming update data
     let sanitizedBody = sanitizeLeadData(req.body);
 
-    // Fields that can be updated (excluding deprecated single-degree fields)
     const fields = [
       "name",
       "email",
@@ -395,7 +442,6 @@ export async function updateLead(req, res) {
     ];
 
     const changes = [];
-
     const numericFields = ["english_test_overall_score", "counsellor_id"];
 
     fields.forEach((field) => {
@@ -406,7 +452,6 @@ export async function updateLead(req, res) {
       let isChanged = false;
 
       if (numericFields.includes(field)) {
-        // Compare numerically
         const oldNum =
           oldVal === null || oldVal === "" ? null : parseFloat(oldVal);
         const newNum =
@@ -415,7 +460,6 @@ export async function updateLead(req, res) {
           isChanged = true;
         }
       } else {
-        // String comparison for other fields
         if (String(oldVal) !== String(newVal)) {
           isChanged = true;
         }
@@ -428,7 +472,6 @@ export async function updateLead(req, res) {
 
     let updateData = { ...sanitizedBody };
 
-    // Handle total score logic
     if (
       sanitizedBody.english_proficiency_test &&
       sanitizedBody.english_proficiency_test !== "none"
@@ -437,12 +480,9 @@ export async function updateLead(req, res) {
         sanitizedBody.english_test_overall_score !== undefined &&
         sanitizedBody.english_test_overall_score !== null
       ) {
-        // Direct score provided – use it
         updateData.english_test_overall_score =
           sanitizedBody.english_test_overall_score;
-      }
-      // Fallback for legacy clients: compute from module scores (if any)
-      else if (sanitizedBody.english_test_scores) {
+      } else if (sanitizedBody.english_test_scores) {
         updateData.english_test_overall_score = computeEnglishTestOverallScore(
           sanitizedBody.english_proficiency_test,
           sanitizedBody.english_test_scores,
@@ -452,12 +492,10 @@ export async function updateLead(req, res) {
       updateData.english_test_overall_score = null;
     }
 
-    // We no longer store modular scores – set to null
     updateData.english_test_scores = null;
 
     await lead.update(updateData);
 
-    // Handle education entries if provided
     if (req.body.education !== undefined) {
       await handleLeadEducation(lead.id, req.body.education);
       changes.push("Education entries updated");
@@ -475,7 +513,6 @@ export async function updateLead(req, res) {
       performedByName: req.user.name,
     });
 
-    // Return updated lead with education
     const updatedLead = await Lead.findByPk(lead.id, {
       include: [
         { model: User, as: "counsellor" },
@@ -511,7 +548,6 @@ export async function assignCounsellor(req, res) {
     lead.counsellor_id = newCounsellorId;
     await lead.save();
 
-    // ✅ If a new counsellor is assigned and the lead has a student user, ensure conversation exists
     if (newCounsellorId && lead.user_id) {
       const studentUser = await User.findByPk(lead.user_id, {
         attributes: ["name"],
@@ -563,6 +599,18 @@ export async function assignCounsellor(req, res) {
       if (sent)
         console.log(`SSE lead_assigned sent to counsellor ${newCounsellorId}`);
       else console.log(`Counsellor ${newCounsellorId} not connected via SSE`);
+
+      await storeNotification(
+        newCounsellorId,
+        "lead_assigned",
+        `New lead assigned: ${lead.name}`,
+        {
+          leadId: lead.id,
+          leadName: lead.name,
+          assignedBy: req.user.name,
+          assignedByRole: req.user.role,
+        },
+      );
     }
 
     res.json(lead);
@@ -583,6 +631,29 @@ export async function updateStage(req, res) {
     if (!status) return res.status(400).json({ message: "Status is required" });
 
     await lead.update({ status });
+
+    if (lead.user_id) {
+      const statusLabels = {
+        new: "New",
+        contacted: "Contacted",
+        counseling: "Counseling",
+        visa_filed: "Visa Filed",
+        visa_approved: "Visa Approved",
+        success: "Success",
+        rejected: "Rejected",
+      };
+      const newStatusLabel = statusLabels[status] || status;
+      await storeNotification(
+        lead.user_id,
+        "status_change",
+        `Your lead status changed to ${newStatusLabel}`,
+        {
+          leadId: lead.id,
+          oldStatus,
+          newStatus: status,
+        },
+      );
+    }
 
     await logActivity({
       leadId: lead.id,
@@ -618,17 +689,12 @@ export async function updateStage(req, res) {
       });
     }
 
-    // --------------------------------------------------------
-    // MODIFIED: Send password setup email ONLY on first entry into Counseling
-    // --------------------------------------------------------
     const isMovingToCounseling =
       status === "counseling" && oldStatus !== "counseling";
 
     if (isMovingToCounseling && lead.email) {
-      // Use the helper – it will check lead.has_entered_counseling internally
       await handleFirstCounselingEntry(lead, req.user);
     }
-    // --------------------------------------------------------
 
     res.json({ message: "Stage updated successfully", lead });
   } catch (error) {

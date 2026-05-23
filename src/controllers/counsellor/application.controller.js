@@ -15,6 +15,7 @@ import {
 } from "../../services/email.service.js";
 
 const { Application, Lead, User, Document } = db;
+import { storeNotification } from "../../utils/notificationHelper.js";
 
 const sendStatusUpdateEmail = async (
   application,
@@ -388,6 +389,40 @@ export const createApplication = async (req, res) => {
         message: `New application created for ${application.target_university} (${application.course}).`,
         timestamp: new Date().toISOString(),
       });
+
+      await storeNotification(
+        student.id,
+        "application_created",
+        `New application created for ${application.target_university} (${application.course}).`,
+        {
+          applicationId: application.id,
+          university: application.target_university,
+          course: application.course,
+          createdAt: new Date().toISOString(),
+        },
+      );
+
+      const admins = await User.findAll({
+        where: { role: "admin" },
+        attributes: ["id"],
+      });
+
+      for (const admin of admins) {
+        await storeNotification(
+          admin.id,
+          "counsellor_added_application",
+          `Counsellor ${req.user.name} added an application for student ${lead.name} to ${application.target_university} (${application.course}).`,
+          {
+            applicationId: application.id,
+            counsellorId: req.user.id,
+            counsellorName: req.user.name,
+            studentId: lead.id,
+            studentName: lead.name,
+            university: application.target_university,
+            course: application.course,
+          },
+        );
+      }
     }
 
     res.status(201).json({
@@ -467,6 +502,17 @@ export const updateApplication = async (req, res) => {
         message,
         timestamp: new Date().toISOString(),
       });
+
+      await storeNotification(student.id, "application_updated", message, {
+        applicationId: application.id,
+        oldUniversity,
+        newUniversity: req.body.target_university,
+        oldCourse,
+        newCourse: req.body.course,
+        oldStatus,
+        newStatus: req.body.status,
+        updatedBy: req.user.name,
+      });
     }
 
     res.json({
@@ -505,6 +551,19 @@ export const deleteApplication = async (req, res) => {
         message: `Your application for ${application.target_university} (${application.course}) has been deleted.`,
         timestamp: new Date().toISOString(),
       });
+
+      await storeNotification(
+        student.id,
+        "application_deleted",
+        `Your application for ${application.target_university} (${application.course}) has been deleted.`,
+        {
+          applicationId: application.id,
+          university: application.target_university,
+          course: application.course,
+          deletedBy: req.user.name,
+          deletedAt: new Date().toISOString(),
+        },
+      );
     }
 
     await Document.update(
@@ -620,6 +679,21 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
         message: notificationMessage,
         timestamp: new Date().toISOString(),
       });
+
+      await storeNotification(
+        student.id,
+        "status_change",
+        notificationMessage,
+        {
+          applicationId: application.id,
+          oldStatus,
+          newStatus: status,
+          university: application.target_university,
+          course: application.course,
+          updatedBy: req.user.name,
+          counselorNotes: counsellor_notes || null,
+        },
+      );
     }
 
     res.json({

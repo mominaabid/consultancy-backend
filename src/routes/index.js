@@ -15,6 +15,7 @@ import sseRoutes from "./sse.routes.js";
 import counsellorProfileRoutes from "./counsellor/counsellorProfile.routes.js";
 import studentProfileRoutes from "./student/studentProfile.routes.js";
 import adminProfileRoutes from "./admin/adminProfile.routes.js";
+import notificationRoutes from "./notification.routes.js";
 
 const router = Router();
 
@@ -43,6 +44,8 @@ router.use("/counsellor/leads", adminLeadRoutes);
 router.use("/counsellor/documents", counsellorDocumentRoutes);
 router.use("/counsellor", counsellorApplicationRoutes);
 router.use("/counsellor", counsellorProfileRoutes);
+
+router.use("/notifications", notificationRoutes);
 
 router.use("/", studentApplicationRoutes);
 
