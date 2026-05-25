@@ -1,5 +1,7 @@
 import db from "../../models/mysql/index.js";
 import { uploadPaymentProof } from "../../services/fileUpload.service.js";
+import { storeNotification } from "../../utils/notificationHelper.js";
+import sseManager from "../../utils/sseManager.js";
 
 const { Payment, Application, User, Lead } = db;
 
@@ -89,6 +91,55 @@ export async function getMyPayments(req, res) {
   }
 }
 
+// export async function makePayment(req, res) {
+//   try {
+//     const { application_id, amount, mode, payment_date, notes } = req.body;
+//     const proofFile = req.file;
+
+//     if (!application_id || !amount || !mode) {
+//       return res.status(400).json({ message: "Missing required fields" });
+//     }
+
+//     const application = await Application.findByPk(application_id);
+//     if (!application) {
+//       return res.status(404).json({ message: "Application not found" });
+//     }
+
+//     let proofUrl = null;
+//     if (proofFile && mode === "online") {
+//       const uploadResult = await uploadPaymentProof(
+//         proofFile,
+//         req.user.id,
+//         "proof",
+//       );
+//       proofUrl = uploadResult.fileUrl;
+//     }
+
+//     const payment = await Payment.create({
+//       user_id: req.user.id,
+//       application_id,
+//       amount: parseFloat(amount),
+//       mode,
+//       payment_date: payment_date || new Date(),
+//       notes: notes || null,
+//       payment_proof: proofUrl,
+//       status: "awaiting_verification",
+//       recorded_by: req.user.id,
+//       paid_at: new Date(),
+//     });
+
+//     res.status(201).json({
+//       success: true,
+//       message:
+//         "Payment submitted successfully! Please wait for admin verification.",
+//       payment,
+//     });
+//   } catch (error) {
+//     console.error("Error in makePayment:", error);
+//     res.status(500).json({ message: error.message });
+//   }
+// }
+
 export async function makePayment(req, res) {
   try {
     const { application_id, amount, mode, payment_date, notes } = req.body;
@@ -125,6 +176,63 @@ export async function makePayment(req, res) {
       recorded_by: req.user.id,
       paid_at: new Date(),
     });
+
+    // ----- NEW: Notify all admins -----
+    try {
+      // 1. Get student details
+      const student = await User.findByPk(req.user.id, {
+        attributes: ["id", "name", "email"],
+      });
+
+      // 2. Prepare notification message & metadata
+      const studentName = student?.name || "A student";
+      const university = application.target_university || "Unknown university";
+      const course = application.course || "Unknown course";
+      const amountFormatted = parseFloat(amount).toFixed(2);
+
+      const message = `${studentName} has added a payment of ${amountFormatted} for application to ${university} (${course}). Please verify.`;
+
+      const metadata = {
+        paymentId: payment.id,
+        applicationId: application.id,
+        studentId: req.user.id,
+        studentName: studentName,
+        amount: parseFloat(amount),
+        mode: mode,
+        university: university,
+        course: course,
+      };
+
+      // 3. Find all admin users
+      const admins = await User.findAll({
+        where: { role: "admin", is_deleted: false },
+        attributes: ["id"],
+      });
+
+      // 4. Store a notification record for each admin and send SSE
+      for (const admin of admins) {
+        // Store in DB
+        await storeNotification(
+          admin.id,
+          "payment_awaiting_verification",
+          message,
+          metadata,
+        );
+
+        // Send real‑time SSE event
+        sseManager.sendToUser(admin.id, {
+          type: "payment_awaiting_verification",
+          message: message,
+          metadata: metadata,
+        });
+      }
+
+      console.log(`Payment notification sent to ${admins.length} admin(s)`);
+    } catch (notifError) {
+      // Log but don't break the payment flow
+      console.error("Failed to send payment notification:", notifError);
+    }
+    // ----- End of notification block -----
 
     res.status(201).json({
       success: true,

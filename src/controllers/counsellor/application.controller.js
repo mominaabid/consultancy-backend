@@ -484,17 +484,54 @@ export const updateApplication = async (req, res) => {
     const student = await User.findByPk(application.user_id, {
       attributes: ["id", "name", "email"],
     });
-    let message = "Your application was updated.";
+    // let message = "Your application was updated.";
+    // if (
+    //   req.body.target_university &&
+    //   req.body.target_university !== oldUniversity
+    // ) {
+    //   message = `University changed to ${req.body.target_university}.`;
+    // } else if (req.body.course && req.body.course !== oldCourse) {
+    //   message = `Course changed to ${req.body.course}.`;
+    // } else if (req.body.status && req.body.status !== oldStatus) {
+    //   message = `Status changed to ${req.body.status}.`;
+    // }
+
+    // Helper to get a readable application identifier
+    const getAppIdentifier = (app) => {
+      if (app.target_university && app.course) {
+        return `${app.target_university} (${app.course})`;
+      }
+      if (app.target_university) return app.target_university;
+      if (app.course) return app.course;
+      return `Application #${app.id}`;
+    };
+
+    let message = `Your application (${getAppIdentifier(application)}) was updated.`;
+
     if (
       req.body.target_university &&
       req.body.target_university !== oldUniversity
     ) {
-      message = `University changed to ${req.body.target_university}.`;
+      message = `University for ${getAppIdentifier(application)} changed to ${req.body.target_university}.`;
     } else if (req.body.course && req.body.course !== oldCourse) {
-      message = `Course changed to ${req.body.course}.`;
+      message = `Course for ${getAppIdentifier(application)} changed to ${req.body.course}.`;
     } else if (req.body.status && req.body.status !== oldStatus) {
-      message = `Status changed to ${req.body.status}.`;
+      // Use a user‑friendly status label
+      const statusDisplayMap = {
+        inquiry: "Inquiry",
+        evaluation: "Evaluation",
+        "application submitted": "Application Submitted",
+        "offer letter received": "Offer Letter Received",
+        "offer letter not received": "Offer Letter Not Received",
+        "visa filed": "Visa Filed",
+        approved: "Approved",
+        reject: "Rejected",
+      };
+      const newStatusLabel =
+        statusDisplayMap[req.body.status] || req.body.status;
+      message = `Status of ${getAppIdentifier(application)} changed to ${newStatusLabel}.`;
     }
+
     if (student && student.id) {
       sseManager.sendToUser(student.id, {
         type: "application_updated",
