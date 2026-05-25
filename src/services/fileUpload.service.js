@@ -7,9 +7,9 @@ const __dirname = path.dirname(__filename);
 
 const getUploadsDir = () => {
   if (process.env.NODE_ENV === "production") {
-    return "/tmp/uploads"; 
+    return "/tmp/uploads";
   }
-  return path.join(__dirname, "../../uploads"); 
+  return path.join(__dirname, "../../uploads");
 };
 
 const UPLOADS_DIR = getUploadsDir();
@@ -36,7 +36,6 @@ export const uploadFile = async (file, studentId, docType) => {
     const filepath = path.join(DOCUMENTS_DIR, filename);
 
     fs.writeFileSync(filepath, file.buffer);
-
 
     const baseUrl =
       process.env.BASE_URL ||
@@ -72,7 +71,6 @@ export const uploadPaymentProof = async (file, userId, paymentId) => {
     const filepath = path.join(PAYMENTS_DIR, filename);
 
     fs.writeFileSync(filepath, file.buffer);
-
 
     const baseUrl =
       process.env.BASE_URL ||
