@@ -1,5 +1,6 @@
 import Lead from "../../models/mysql/Lead.js";
 import User from "../../models/mysql/User.js";
+import LeadEducation from "../../models/mysql/LeadEducation.js";
 
 export const uploadProfilePicture = async (req, res) => {
   try {
@@ -11,8 +12,30 @@ export const uploadProfilePicture = async (req, res) => {
 
     const relativePath = `uploads/${req.file.filename}`;
 
+    // const student = await Lead.findOne({
+    //   where: { user_id: userId, is_deleted: false },
+    // });
+
     const student = await Lead.findOne({
       where: { user_id: userId, is_deleted: false },
+      include: [
+        {
+          model: User,
+          as: "counsellor",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: LeadEducation, // ✅ Add this
+          as: "education", // ✅ Must match alias defined in your model association
+          attributes: [
+            "id",
+            "degree",
+            "year_awarded",
+            "grades_cgpa",
+            "board_university",
+          ],
+        },
+      ],
     });
 
     if (!student) {
