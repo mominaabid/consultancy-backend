@@ -11,6 +11,61 @@ export async function createCounsellor(req, res) {
     const { name, father_name, email, phone, cnic, address, role, status } =
       req.body;
 
+    // ✅ Check duplicate email
+    const existingCounsellor = await Counsellor.findOne({
+      where: {
+        email,
+        is_deleted: false,
+      },
+    });
+
+    if (existingCounsellor) {
+      return res.status(400).json({
+        message: "Counsellor with this email already exists",
+      });
+    }
+
+    // ✅ Check duplicate phone
+    const existingPhone = await Counsellor.findOne({
+      where: {
+        phone,
+        is_deleted: false,
+      },
+    });
+
+    if (existingPhone) {
+      return res.status(400).json({
+        message: "Counsellor with this phone number already exists",
+      });
+    }
+
+    // ✅ Check duplicate CNIC
+    const existingCnic = await Counsellor.findOne({
+      where: {
+        cnic,
+        is_deleted: false,
+      },
+    });
+
+    if (existingCnic) {
+      return res.status(400).json({
+        message: "Counsellor with this CNIC already exists",
+      });
+    }
+
+    const existingUser = await User.findOne({
+      where: {
+        email,
+        is_deleted: false,
+      },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "User with this email already exists",
+      });
+    }
+
     const user = await User.create({
       name,
       email,
@@ -91,10 +146,65 @@ export async function getAllCounsellors(req, res) {
 export async function updateCounsellor(req, res) {
   try {
     const counsellor = await Counsellor.findByPk(req.params.id);
-    if (!counsellor)
-      return res.status(404).json({ message: "Counsellor not found" });
 
-    const fields = ["name", "email", "phone", "address", "status"];
+    if (!counsellor) {
+      return res.status(404).json({
+        message: "Counsellor not found",
+      });
+    }
+
+    // ✅ Duplicate email validation
+    // ✅ Duplicate email validation
+    if (req.body.email) {
+      const existingCounsellor = await Counsellor.findOne({
+        where: {
+          email: req.body.email,
+          is_deleted: false,
+        },
+      });
+
+      if (existingCounsellor && existingCounsellor.id !== counsellor.id) {
+        return res.status(400).json({
+          message: "Counsellor with this email already exists",
+        });
+      }
+    }
+
+    // ✅ Duplicate phone validation
+    if (req.body.phone) {
+      const existingPhone = await Counsellor.findOne({
+        where: {
+          phone: req.body.phone,
+          is_deleted: false,
+        },
+      });
+
+      if (existingPhone && existingPhone.id !== counsellor.id) {
+        return res.status(400).json({
+          message: "Counsellor with this phone number already exists",
+        });
+      }
+    }
+
+    // ✅ Duplicate CNIC validation
+    if (req.body.cnic) {
+      const existingCnic = await Counsellor.findOne({
+        where: {
+          cnic: req.body.cnic,
+          is_deleted: false,
+        },
+      });
+
+      if (existingCnic && existingCnic.id !== counsellor.id) {
+        return res.status(400).json({
+          message: "Counsellor with this CNIC already exists",
+        });
+      }
+    }
+
+    const oldEmail = counsellor.email;
+
+    const fields = ["name", "email", "phone", "cnic", "address", "status"];
     const changes = [];
 
     fields.forEach((field) => {
@@ -111,9 +221,14 @@ export async function updateCounsellor(req, res) {
     await User.update(
       {
         name: req.body.name || counsellor.name,
+        email: req.body.email || counsellor.email,
         is_active: req.body.status ? req.body.status === "active" : undefined,
       },
-      { where: { email: counsellor.email } },
+      {
+        where: {
+          email: oldEmail,
+        },
+      },
     );
 
     if (req.user) {
@@ -130,7 +245,10 @@ export async function updateCounsellor(req, res) {
       });
     }
 
-    res.json({ message: "Counsellor updated successfully", data: counsellor });
+    res.json({
+      message: "Counsellor updated successfully",
+      data: counsellor,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });

@@ -224,6 +224,43 @@ export async function createLead(req, res) {
           : Number(sanitizedBody.counsellor_id),
     };
 
+    // Normalize email
+    if (data.email) {
+      data.email = data.email.trim().toLowerCase();
+
+      // Prevent duplicate lead emails
+      const existingLead = await Lead.findOne({
+        where: {
+          email: data.email,
+          is_deleted: false,
+        },
+      });
+
+      if (existingLead) {
+        return res.status(400).json({
+          message: "A lead with this email already exists.",
+        });
+      }
+    }
+
+    if (data.phone) {
+      data.phone = data.phone.trim();
+
+      // Prevent duplicate lead phone numbers
+      const existingPhoneLead = await Lead.findOne({
+        where: {
+          phone: data.phone,
+          is_deleted: false,
+        },
+      });
+
+      if (existingPhoneLead) {
+        return res.status(400).json({
+          message: "A lead with this phone number already exists.",
+        });
+      }
+    }
+
     if (
       data.english_proficiency_test &&
       data.english_proficiency_test !== "none"
@@ -261,12 +298,13 @@ export async function createLead(req, res) {
       performedByName: req.user.name,
     });
 
-    // ---------- Email for counsellor (original, kept as is) ----------
+    // ---------- Email for counsellor ----------
     if (lead.counsellor_id) {
       const counsellorUser = await User.findOne({
         where: { id: lead.counsellor_id, role: "counsellor" },
         attributes: ["id", "name", "email"],
       });
+
       if (counsellorUser?.email) {
         sendLeadAssignmentEmail({
           counsellorEmail: counsellorUser.email,
@@ -276,7 +314,7 @@ export async function createLead(req, res) {
       }
     }
 
-    // ========== NEW: If counsellor created the lead → notify all admins ==========
+    // Notify admins when counsellor creates lead
     if (req.user.role === "counsellor") {
       const admins = await User.findAll({
         where: { role: "admin", is_active: true },
@@ -292,6 +330,7 @@ export async function createLead(req, res) {
           counsellorId: req.user.id,
           counsellorName: req.user.name,
         };
+
         sseManager.sendToUser(admin.id.toString(), sseEvent);
 
         await storeNotification(
@@ -308,7 +347,7 @@ export async function createLead(req, res) {
       }
     }
 
-    // ========== MODIFIED: Notify assigned counsellor only if different from creator ==========
+    // Notify assigned counsellor
     if (lead.counsellor_id) {
       const counsellorUser = await User.findOne({
         where: { id: lead.counsellor_id, role: "counsellor" },
@@ -316,12 +355,10 @@ export async function createLead(req, res) {
       });
 
       if (counsellorUser) {
-        // Skip self-notification when the creator is the same counsellor
         const isSelfAssignment =
           req.user.role === "counsellor" && req.user.id === lead.counsellor_id;
 
         if (!isSelfAssignment) {
-          // Email (already present, but we send again? Keeping original behaviour)
           if (counsellorUser.email) {
             sendLeadAssignmentEmail({
               counsellorEmail: counsellorUser.email,
@@ -330,7 +367,6 @@ export async function createLead(req, res) {
             }).catch((err) => console.error("Background email error:", err));
           }
 
-          // SSE event for real-time bell notification
           const sseEvent = {
             type: "lead_created",
             message: `New lead "${lead.name}" has been created and assigned to you.`,
@@ -339,9 +375,9 @@ export async function createLead(req, res) {
             counsellorId: counsellorUser.id,
             counsellorName: counsellorUser.name,
           };
+
           sseManager.sendToUser(counsellorUser.id.toString(), sseEvent);
 
-          // Store in database (persistent notification)
           await storeNotification(
             counsellorUser.id,
             "lead_created",
@@ -422,9 +458,53 @@ export async function getLeadById(req, res) {
 export async function updateLead(req, res) {
   try {
     const lead = await Lead.findByPk(req.params.id);
-    if (!lead) return res.status(404).json({ message: "Lead not found." });
+
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found." });
+    }
 
     let sanitizedBody = sanitizeLeadData(req.body);
+
+    // Normalize email
+    if (sanitizedBody.email) {
+      sanitizedBody.email = sanitizedBody.email.trim().toLowerCase();
+
+      // Prevent duplicate emails
+      if (sanitizedBody.email !== lead.email?.trim().toLowerCase()) {
+        const existingLead = await Lead.findOne({
+          where: {
+            email: sanitizedBody.email,
+            is_deleted: false,
+          },
+        });
+
+        if (existingLead) {
+          return res.status(400).json({
+            message: "A lead with this email already exists.",
+          });
+        }
+      }
+    }
+
+    if (sanitizedBody.phone) {
+      sanitizedBody.phone = sanitizedBody.phone.trim();
+
+      // Prevent duplicate phone numbers
+      if (sanitizedBody.phone !== lead.phone?.trim()) {
+        const existingPhoneLead = await Lead.findOne({
+          where: {
+            phone: sanitizedBody.phone,
+            is_deleted: false,
+          },
+        });
+
+        if (existingPhoneLead) {
+          return res.status(400).json({
+            message: "A lead with this phone number already exists.",
+          });
+        }
+      }
+    }
 
     const fields = [
       "name",
@@ -449,13 +529,16 @@ export async function updateLead(req, res) {
 
       const oldVal = lead[field];
       const newVal = sanitizedBody[field];
+
       let isChanged = false;
 
       if (numericFields.includes(field)) {
         const oldNum =
           oldVal === null || oldVal === "" ? null : parseFloat(oldVal);
+
         const newNum =
           newVal === null || newVal === "" ? null : parseFloat(newVal);
+
         if (oldNum !== newNum && !(isNaN(oldNum) && isNaN(newNum))) {
           isChanged = true;
         }
