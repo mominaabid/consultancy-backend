@@ -6,23 +6,33 @@ import { sendCounsellorPasswordSetupEmail } from "../services/counsellorEmail.se
 
 const { Counsellor, User, Lead, PasswordResetToken } = db;
 
+const emailRegex = /^[a-zA-Z][a-zA-Z0-9._%+-]*@[a-zA-Z.-]+\.[a-zA-Z]{2,}$/;
+
 export async function createCounsellor(req, res) {
   try {
     const { name, father_name, email, phone, cnic, address, role, status } =
       req.body;
 
-    // ✅ Check duplicate email
-    const existingCounsellor = await Counsellor.findOne({
-      where: {
-        email,
-        is_deleted: false,
-      },
-    });
-
-    if (existingCounsellor) {
+    if (!emailRegex.test(email)) {
       return res.status(400).json({
-        message: "Counsellor with this email already exists",
+        message: "Invalid email format",
       });
+    }
+
+    // ✅ Check duplicate email
+    if (cnic) {
+      const existingCnic = await Counsellor.findOne({
+        where: {
+          cnic,
+          is_deleted: false,
+        },
+      });
+
+      if (existingCnic) {
+        return res.status(400).json({
+          message: "Counsellor with this CNIC already exists",
+        });
+      }
     }
 
     // ✅ Check duplicate phone
@@ -146,6 +156,12 @@ export async function getAllCounsellors(req, res) {
 export async function updateCounsellor(req, res) {
   try {
     const counsellor = await Counsellor.findByPk(req.params.id);
+
+    if (req.body.email && !emailRegex.test(req.body.email)) {
+      return res.status(400).json({
+        message: "Invalid email format",
+      });
+    }
 
     if (!counsellor) {
       return res.status(404).json({

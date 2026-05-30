@@ -579,10 +579,36 @@ export async function updateLead(req, res) {
 
     await lead.update(updateData);
 
-    if (req.body.education !== undefined) {
+    // --- Education change detection ---
+    // Fetch existing education records for this lead
+    const existingEducation = await LeadEducation.findAll({
+      where: { lead_id: lead.id },
+      attributes: ["degree", "year_awarded", "grades_cgpa", "board_university"],
+      raw: true,
+    });
+
+    // Normalization helper: ensures consistent shape for comparison
+    const normalizeEducation = (edu) => {
+      if (!Array.isArray(edu)) return [];
+      return edu.map((e) => ({
+        degree: e.degree || null,
+        year_awarded: e.year_awarded || null,
+        grades_cgpa: e.grades_cgpa || null,
+        board_university: e.board_university || null,
+      }));
+    };
+
+    const oldEdu = normalizeEducation(existingEducation);
+    const newEdu = normalizeEducation(req.body.education || []);
+
+    // Deep compare (JSON stringify is safe because order of keys is consistent)
+    const educationChanged = JSON.stringify(oldEdu) !== JSON.stringify(newEdu);
+
+    if (req.body.education !== undefined && educationChanged) {
       await handleLeadEducation(lead.id, req.body.education);
       changes.push("Education entries updated");
     }
+    // --- End education change detection ---
 
     await logActivity({
       leadId: lead.id,
