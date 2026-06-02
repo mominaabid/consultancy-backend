@@ -1,6 +1,6 @@
 import db from "../../models/mysql/index.js";
 import { logActivity } from "../../services/activityLog.service.js";
-const { Op } = db.Sequelize;
+import { Op } from "sequelize";
 import { storeNotification } from "../../utils/notificationHelper.js";
 import sseManager from "../../utils/sseManager.js";
 
@@ -87,14 +87,34 @@ export async function setTotalFees(req, res) {
 
 export async function getOfferLetterStudents(req, res) {
   try {
-    const applications = await Application.findAll({
-      where: {
-        status: {
-          [Op.in]: ["offer letter received", "visa filed", "approved"],
-        },
+    const { start, end } = req.query;
+
+    // Build where clause for applications
+    let appWhere = {
+      status: {
+        [Op.in]: ["offer letter received", "visa filed", "approved"],
       },
+    };
+
+    if (start && end) {
+      appWhere.created_at = {
+        [Op.between]: [new Date(start), new Date(end)],
+      };
+    }
+
+    const applications = await Application.findAll({
+      where: appWhere,
       order: [["created_at", "DESC"]],
     });
+
+    // const applications = await Application.findAll({
+    //   where: {
+    //     status: {
+    //       [Op.in]: ["offer letter received", "visa filed", "approved"],
+    //     },
+    //   },
+    //   order: [["created_at", "DESC"]],
+    // });
 
     const studentsWithPayments = await Promise.all(
       applications.map(async (app) => {
@@ -152,63 +172,6 @@ export async function getOfferLetterStudents(req, res) {
   }
 }
 
-// export async function addPayment(req, res) {
-//   try {
-//     const {
-//       user_id,
-//       application_id,
-//       amount,
-//       payment_type,
-//       mode,
-//       reference_no,
-//       transaction_id,
-//       notes,
-//       status,
-//     } = req.body;
-
-//     console.log("Adding payment:", { user_id, application_id, amount, mode });
-
-//     if (!application_id || !amount || !mode) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Missing required fields: application_id, amount, mode",
-//       });
-//     }
-
-//     const application = await Application.findByPk(application_id);
-//     if (!application) {
-//       return res.status(404).json({ message: "Application not found" });
-//     }
-
-//     const payment = await Payment.create({
-//       user_id: user_id || application.user_id,
-//       application_id: parseInt(application_id),
-//       amount: parseFloat(amount),
-//       payment_type: payment_type || "consultancy_fee",
-//       mode: mode,
-//       status: status,
-//       reference_no: reference_no || null,
-//       transaction_id: transaction_id || null,
-//       recorded_by: req.user.id,
-//       paid_at: new Date(),
-//       notes: notes || null,
-//       is_deleted: false,
-//     });
-
-//     console.log("Payment created:", payment.id);
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Payment added successfully",
-//       payment,
-//     });
-//   } catch (error) {
-//     console.error("Error in addPayment:", error);
-//     res.status(500).json({ message: error.message });
-//   }
-// }
-
-// payment.controller.js (admin)
 export async function addPayment(req, res) {
   try {
     const {
@@ -347,6 +310,18 @@ export async function addPayment(req, res) {
     }
     // --- End of notification block ---
 
+    const lead = await Lead.findOne({ where: { user_id: payment.user_id } });
+    if (lead) {
+      await logActivity({
+        leadId: lead.id,
+        actionType: "payment_created",
+        note: `Payment of ${amount} added for application ${application_id}`,
+        performedBy: req.user.id,
+        performedByRole: req.user.role,
+        performedByName: req.user.name,
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: "Payment added successfully",
@@ -360,8 +335,17 @@ export async function addPayment(req, res) {
 
 export async function getAllPayments(req, res) {
   try {
+    const { start, end } = req.query;
+
+    let where = { is_deleted: false };
+    if (start && end) {
+      where.paid_at = {
+        [Op.between]: [new Date(start), new Date(end)],
+      };
+    }
+
     const payments = await Payment.findAll({
-      where: { is_deleted: false },
+      where,
       include: [
         {
           model: Application,
@@ -417,14 +401,18 @@ export async function deletePayment(req, res) {
 
     await payment.update({ is_deleted: true });
 
-    await logActivity({
-      leadId: payment.user_id,
-      actionType: "payment_deleted",
-      note: `Payment of ${payment.amount} deleted`,
-      performedBy: req.user.id,
-      performedByRole: req.user.role,
-      performedByName: req.user.name,
-    });
+    const lead = await Lead.findOne({ where: { user_id: payment.user_id } });
+
+    if (lead) {
+      await logActivity({
+        leadId: lead.id,
+        actionType: "payment_deleted",
+        note: `Payment of ${payment.amount} deleted`,
+        performedBy: req.user.id,
+        performedByRole: req.user.role,
+        performedByName: req.user.name,
+      });
+    }
 
     res.json({ success: true, message: "Payment deleted successfully" });
   } catch (error) {
@@ -435,8 +423,17 @@ export async function deletePayment(req, res) {
 
 export async function getPendingVerifications(req, res) {
   try {
+    const { start, end } = req.query;
+
+    let where = { status: "awaiting_verification", is_deleted: false };
+    if (start && end) {
+      where.paid_at = {
+        [Op.between]: [new Date(start), new Date(end)],
+      };
+    }
+
     const payments = await Payment.findAll({
-      where: { status: "awaiting_verification", is_deleted: false },
+      where,
       include: [
         {
           model: Application,
@@ -458,67 +455,6 @@ export async function getPendingVerifications(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
-
-// export async function verifyPayment(req, res) {
-//   try {
-//     const { id } = req.params;
-//     const { action, rejection_reason } = req.body;
-
-//     const payment = await Payment.findByPk(id);
-
-//     if (!payment) {
-//       return res.status(404).json({ message: "Payment not found" });
-//     }
-
-//     if (action === "approve") {
-//       await payment.update({
-//         status: "completed",
-//         verified_by: req.user.id,
-//         verified_at: new Date(),
-//       });
-
-//       await logActivity({
-//         leadId: payment.user_id,
-//         actionType: "payment_approved",
-//         note: `Payment of ${payment.amount} approved`,
-//         performedBy: req.user.id,
-//         performedByRole: req.user.role,
-//         performedByName: req.user.name,
-//       });
-
-//       res.json({
-//         success: true,
-//         message: "Payment approved successfully",
-//         payment,
-//       });
-//     } else if (action === "reject") {
-//       await payment.update({
-//         status: "rejected",
-//         rejection_reason: rejection_reason,
-//         verified_by: req.user.id,
-//         verified_at: new Date(),
-//       });
-
-//       await logActivity({
-//         leadId: payment.user_id,
-//         actionType: "payment_rejected",
-//         note: `Payment of ${payment.amount} rejected. Reason: ${rejection_reason}`,
-//         performedBy: req.user.id,
-//         performedByRole: req.user.role,
-//         performedByName: req.user.name,
-//       });
-
-//       res.json({
-//         success: true,
-//         message: "Payment rejected successfully",
-//         payment,
-//       });
-//     }
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: error.message });
-//   }
-// }
 
 export async function verifyPayment(req, res) {
   try {
@@ -553,14 +489,17 @@ export async function verifyPayment(req, res) {
         verified_at: new Date(),
       });
 
-      await logActivity({
-        leadId: payment.user_id,
-        actionType: "payment_approved",
-        note: `Payment of ${payment.amount} approved`,
-        performedBy: req.user.id,
-        performedByRole: req.user.role,
-        performedByName: req.user.name,
-      });
+      const lead = await Lead.findOne({ where: { user_id: payment.user_id } });
+      if (lead) {
+        await logActivity({
+          leadId: lead.id,
+          actionType: "payment_approved", // or "payment_rejected"
+          note: `Payment of ${payment.amount} ${action === "approve" ? "approved" : "rejected"}`,
+          performedBy: req.user.id,
+          performedByRole: req.user.role,
+          performedByName: req.user.name,
+        });
+      }
 
       // ----- Send notification to student -----
       const message = `Your payment of $${amount} for ${university} (${course}) has been approved.`;
@@ -595,7 +534,7 @@ export async function verifyPayment(req, res) {
       });
 
       await logActivity({
-        leadId: payment.user_id,
+        leadId: lead.id,
         actionType: "payment_rejected",
         note: `Payment of ${payment.amount} rejected. Reason: ${rejection_reason}`,
         performedBy: req.user.id,
@@ -655,13 +594,22 @@ export async function getPaymentProof(req, res) {
 export async function getStudentPayments(req, res) {
   try {
     const { studentId, applicationId } = req.params;
+    const { start, end } = req.query;
+
+    let where = {
+      user_id: studentId,
+      application_id: applicationId,
+      is_deleted: false,
+    };
+
+    if (start && end) {
+      where.paid_at = {
+        [Op.between]: [new Date(start), new Date(end)],
+      };
+    }
 
     const payments = await Payment.findAll({
-      where: {
-        user_id: studentId,
-        application_id: applicationId,
-        is_deleted: false,
-      },
+      where,
       include: [
         {
           model: Application,

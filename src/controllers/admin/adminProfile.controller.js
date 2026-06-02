@@ -1,5 +1,4 @@
 import User from "../../models/mysql/User.js";
-import bcrypt from "bcryptjs";
 
 export const getAdminProfile = async (req, res) => {
   try {
@@ -18,6 +17,7 @@ export const getAdminProfile = async (req, res) => {
         "is_active",
         "createdAt",
         "updatedAt",
+        "profile_image",
       ],
     });
 
@@ -28,8 +28,13 @@ export const getAdminProfile = async (req, res) => {
     if (admin.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Not an admin." });
     }
+    const response = admin.toJSON();
 
-    res.status(200).json(admin.toJSON());
+    if (response.profile_image) {
+      response.profilePictureUrl = `${req.protocol}://${req.get("host")}/${response.profile_image}`;
+    }
+
+    res.status(200).json(response);
   } catch (error) {
     console.error("Error fetching admin profile:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -39,7 +44,7 @@ export const getAdminProfile = async (req, res) => {
 export const updateAdminProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { name } = req.body; 
+    const { name } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Name is required" });
@@ -62,6 +67,7 @@ export const updateAdminProfile = async (req, res) => {
       email: admin.email,
       role: admin.role,
       is_active: admin.is_active,
+      profile_image: admin.profile_image,
       createdAt: admin.createdAt,
       updatedAt: admin.updatedAt,
     });
@@ -71,46 +77,48 @@ export const updateAdminProfile = async (req, res) => {
   }
 };
 
-export const changeAdminPassword = async (req, res) => {
+export const uploadAdminProfileImage = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { currentPassword, newPassword } = req.body;
 
-    if (!currentPassword || !newPassword) {
+    if (!req.file) {
       return res.status(400).json({
-        message: "Current password and new password are required",
+        message: "No image file provided",
       });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({
-        message: "New password must be at least 6 characters",
-      });
-    }
+    const relativePath = `uploads/${req.file.filename}`;
 
     const admin = await User.findOne({
-      where: { id: userId, is_deleted: false, role: "admin" },
+      where: {
+        id: userId,
+        is_deleted: false,
+        role: "admin",
+      },
     });
 
     if (!admin) {
-      return res.status(404).json({ message: "Admin not found" });
-    }
-
-    const isMatch = await bcrypt.compare(currentPassword, admin.password_hash);
-
-    if (!isMatch) {
-      return res.status(401).json({
-        message: "Current password is incorrect",
+      return res.status(404).json({
+        message: "Admin profile not found",
       });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    admin.password_hash = await bcrypt.hash(newPassword, salt);
-    await admin.save();
+    await admin.update({
+      profile_image: relativePath,
+    });
 
-    res.status(200).json({ message: "Password changed successfully" });
+    const fullUrl = `${req.protocol}://${req.get("host")}/${relativePath}`;
+
+    return res.status(200).json({
+      message: "Profile image uploaded successfully",
+      profilePictureUrl: fullUrl,
+      profilePicturePath: relativePath,
+    });
   } catch (error) {
-    console.error("Error changing admin password:", error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("Upload admin profile image error:", error);
+
+    return res.status(500).json({
+      message: "Failed to upload profile image",
+    });
   }
 };

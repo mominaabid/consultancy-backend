@@ -66,6 +66,10 @@ async function start() {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📁 Uploads served from: ${UPLOADS_DIR}`);
     });
+
+    // server.listen(PORT, "0.0.0.0", () => {
+    //   console.log(`Server running  on http://192.168.1.4:${PORT}`);
+    // });
   } catch (err) {
     console.error("❌ Server startup failed:", err);
   }

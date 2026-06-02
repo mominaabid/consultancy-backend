@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import db from "../models/mysql/index.js";
+import { Op } from "sequelize";
 import { logActivity } from "../services/activityLog.service.js";
 import { sendCounsellorPasswordSetupEmail } from "../services/counsellorEmail.service.js";
 
@@ -135,22 +136,39 @@ export async function createCounsellor(req, res) {
 }
 
 export async function getAllCounsellors(req, res) {
-  const counsellors = await Counsellor.findAll({
-    where: { is_deleted: false, status: "active" },
-    attributes: {
-      include: [
-        [
-          db.sequelize.literal(`(
-            SELECT COUNT(*) FROM leads 
-            WHERE leads.counsellor_id = Counsellor.user_id
-          )`),
-          "assigned_leads",
+  try {
+    const { start, end } = req.query;
+
+    // Build the where clause
+    let whereClause = { is_deleted: false, status: "active" };
+
+    if (start && end) {
+      whereClause.created_at = {
+        [Op.between]: [new Date(start), new Date(end)],
+      };
+    }
+
+    const counsellors = await Counsellor.findAll({
+      where: whereClause, // ✅ use the constructed where
+      attributes: {
+        include: [
+          [
+            db.sequelize.literal(`(
+              SELECT COUNT(*) FROM leads 
+              WHERE leads.counsellor_id = Counsellor.user_id
+            )`),
+            "assigned_leads",
+          ],
         ],
-      ],
-    },
-    include: [{ model: User, as: "user", attributes: ["id"] }],
-  });
-  res.json(counsellors);
+      },
+      include: [{ model: User, as: "user", attributes: ["id"] }],
+    });
+
+    res.json(counsellors);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
 }
 
 export async function updateCounsellor(req, res) {

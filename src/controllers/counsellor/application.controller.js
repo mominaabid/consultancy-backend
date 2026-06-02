@@ -136,10 +136,17 @@ export const getStudentsWithApplications = async (req, res) => {
     const userId = req.user.id;
     const userRole = req.user.role;
     const isAdmin = userRole === "admin";
+    const { start, end } = req.query;
 
     let leadWhere = { is_deleted: false };
     if (!isAdmin) {
       leadWhere.counsellor_id = userId;
+    }
+
+    if (start && end) {
+      leadWhere.created_at = {
+        [Op.between]: [new Date(start), new Date(end)],
+      };
     }
 
     const leads = await Lead.findAll({
@@ -370,6 +377,8 @@ export const createApplication = async (req, res) => {
 
     await sendStatusUpdateEmail(application, "inquiry");
 
+
+   
     await logActivity({
       leadId: lead.id,
       actionType: "application_created",
@@ -398,7 +407,7 @@ export const createApplication = async (req, res) => {
           applicationId: application.id,
           university: application.target_university,
           course: application.course,
-          createdAt: new Date().toISOString(),
+          created_at: new Date().toISOString(),
         },
       );
 
@@ -411,7 +420,7 @@ export const createApplication = async (req, res) => {
         await storeNotification(
           admin.id,
           "counsellor_added_application",
-          `Counsellor ${req.user.name} added an application for student ${lead.name} to ${application.target_university} (${application.course}).`,
+          `${req.user.name} added an application for student ${lead.name} to ${application.target_university} (${application.course}).`,
           {
             applicationId: application.id,
             counsellorId: req.user.id,
@@ -472,8 +481,11 @@ export const updateApplication = async (req, res) => {
       await sendStatusUpdateEmail(application, req.body.status, oldStatus);
     }
 
+    const lead = await Lead.findOne({
+      where: { user_id: application.user_id },
+    });
     await logActivity({
-      leadId: application.user_id,
+      leadId: lead.id,
       actionType: "application_updated",
       note: `Application updated for ${application.target_university}`,
       performedBy: req.user.id,
@@ -609,8 +621,11 @@ export const deleteApplication = async (req, res) => {
     );
     await application.destroy();
 
+    const lead = await Lead.findOne({
+      where: { user_id: application.user_id },
+    });
     await logActivity({
-      leadId: application.user_id,
+      leadId: lead.id,
       actionType: "application_deleted",
       note: `Application deleted for ${application.target_university}`,
       performedBy: req.user.id,
@@ -731,6 +746,22 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
           counselorNotes: counsellor_notes || null,
         },
       );
+    }
+
+    const lead = await Lead.findOne({
+      where: { user_id: application.user_id },
+    });
+    if (lead) {
+      await logActivity({
+        leadId: lead.id,
+        actionType: "application_status_changed",
+        fromValue: oldStatus,
+        toValue: status,
+        note: `Application status changed from ${oldStatus} to ${status}`,
+        performedBy: req.user.id,
+        performedByRole: req.user.role,
+        performedByName: req.user.name,
+      });
     }
 
     res.json({

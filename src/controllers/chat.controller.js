@@ -183,7 +183,7 @@ export async function sendMessage(req, res) {
           senderName: user.name,
           senderRole: user.role,
           preview,
-        }
+        },
       );
       console.log(`💾 Chat notification stored for user ${recipientId}`);
     } catch (storeError) {
@@ -447,9 +447,18 @@ export async function markAsRead(req, res) {
 
 export async function getAllConversations(req, res) {
   try {
-    const conversations = await Conversation.find({}).sort({
-      last_message_at: -1,
-    });
+    const { start, end } = req.query;
+    let filter = {};
+    if (start && end) {
+      filter.createdAt = {
+        $gte: new Date(start),
+        $lt: new Date(end),
+      };
+    }
+
+    const conversations = await Conversation.find(filter)  
+      .sort({ last_message_at: -1 });
+    
     res.json(conversations);
   } catch (error) {
     console.error(error);

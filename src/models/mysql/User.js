@@ -18,6 +18,10 @@ const User = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    profile_image: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     is_deleted: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,

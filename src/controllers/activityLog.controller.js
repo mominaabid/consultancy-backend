@@ -5,7 +5,7 @@ export async function getLeadLogs(req, res) {
   try {
     const logs = await LeadActivityLog.findAll({
       where: { lead_id: req.params.id },
-      order: [['created_at', 'DESC']],
+      order: [['created_at', 'ASC']],
       include: [
         {
           model: User,

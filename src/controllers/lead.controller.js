@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import db from "../models/mysql/index.js";
+const { Op } = db.Sequelize;
 import { sendPasswordSetupEmail } from "../services/email.service.js";
 import { logActivity } from "../services/activityLog.service.js";
 import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js";
@@ -419,13 +420,20 @@ export async function getAllLeads(req, res) {
       where.counsellor_id = req.user.id;
     }
 
+    const { start, end } = req.query;
+    if (start && end) {
+      where.created_at = {
+        [Op.between]: [new Date(start), new Date(end)],
+      };
+    }
+
     const leads = await Lead.findAll({
       where,
       include: [
         { model: User, as: "counsellor" },
         { model: LeadEducation, as: "education" },
       ],
-      order: [["createdAt", "DESC"]],
+      order: [["created_at", "DESC"]],
     });
 
     res.json(leads);
