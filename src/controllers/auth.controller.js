@@ -225,3 +225,61 @@ export async function getMe(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+
+export async function changePassword(req, res) {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Old password and new password are required.",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 6 characters.",
+      });
+    }
+
+    if (oldPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be different from old password.",
+      });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Old password is incorrect.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await user.update({ password_hash: hashedPassword });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password changed successfully. Please log in again.",
+    });
+  } catch (error) {
+    console.error("Change password error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal error occurred. Please try again later.",
+    });
+  }
+}

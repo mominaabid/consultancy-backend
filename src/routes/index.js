@@ -16,6 +16,9 @@ import counsellorProfileRoutes from "./counsellor/counsellorProfile.routes.js";
 import studentProfileRoutes from "./student/studentProfile.routes.js";
 import adminProfileRoutes from "./admin/adminProfile.routes.js";
 import notificationRoutes from "./notification.routes.js";
+import accountRoutes from "./admin/account.routes.js";
+
+
 
 const router = Router();
 
@@ -48,5 +51,9 @@ router.use("/counsellor", counsellorProfileRoutes);
 router.use("/notifications", notificationRoutes);
 
 router.use("/", studentApplicationRoutes);
+router.use("/accounts", accountRoutes);
+
+
+
 
 export default router;

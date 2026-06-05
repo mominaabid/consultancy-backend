@@ -29,6 +29,11 @@ const Application = sequelize.define(
     course: DataTypes.STRING,
     counselor_notes: DataTypes.TEXT,
 
+    consultancy_fee: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+    },
+
     status: {
       type: DataTypes.ENUM(
         "inquiry",

@@ -10,7 +10,7 @@ import Payment from "./Payment.js";
 import MobileDoc from "./tbl_mobile_docs.js";
 import LeadEducation from "./LeadEducation.js";
 import Notification from "./Notification.js";
-
+import AccountTransaction from "./AccountTransaction.js";
 
 Lead.belongsTo(User, {
   foreignKey: "counsellor_id",
@@ -131,6 +131,24 @@ LeadEducation.belongsTo(Lead, {
   as: "lead",
 });
 
+Application.hasMany(AccountTransaction, {
+  foreignKey: "application_id",
+  as: "accountTransactions",
+});
+AccountTransaction.belongsTo(Application, {
+  foreignKey: "application_id",
+  as: "application",
+});
+
+User.hasMany(AccountTransaction, {
+  foreignKey: "user_id",
+  as: "accountTransactions",
+});
+AccountTransaction.belongsTo(User, {
+  foreignKey: "user_id",
+  as: "student",
+});
+
 const db = {
   sequelize,
   Sequelize: sequelize.Sequelize,
@@ -144,7 +162,8 @@ const db = {
   Payment,
   MobileDoc,
   LeadEducation,
-  Notification
+  Notification,
+  AccountTransaction,
 };
 
 export default db;

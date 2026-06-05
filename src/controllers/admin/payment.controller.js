@@ -90,11 +90,7 @@ export async function getOfferLetterStudents(req, res) {
     const { start, end } = req.query;
 
     // Build where clause for applications
-    let appWhere = {
-      status: {
-        [Op.in]: ["offer letter received", "visa filed", "approved"],
-      },
-    };
+    let appWhere = {};
 
     if (start && end) {
       appWhere.created_at = {
@@ -153,6 +149,7 @@ export async function getOfferLetterStudents(req, res) {
           student_email: user?.email || app.email,
           university_name: app.target_university,
           course: app.course,
+          consultancy_fee: app.consultancy_fee,
           total_fees: totalFees,
           scholarship_amount: scholarshipAmount,
           final_fees: finalFees,

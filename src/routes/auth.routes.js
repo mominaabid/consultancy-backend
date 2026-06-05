@@ -7,6 +7,7 @@ import {
   verifyCounsellorSetupToken,
   setupCounsellorPassword,
   counsellorLogin,
+  changePassword, 
 } from "../controllers/auth.controller.js";
 
 import auth from "../middleware/auth.middleware.js";
@@ -27,5 +28,7 @@ router.get("/debug-token", auth, (req, res) => {
     headers: req.headers.authorization,
   });
 });
+router.post("/change-password", auth, changePassword);
+
 
 export default router;

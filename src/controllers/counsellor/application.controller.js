@@ -14,7 +14,7 @@ import {
   sendApplicationRejectedEmail,
 } from "../../services/email.service.js";
 
-const { Application, Lead, User, Document } = db;
+const { Application, Lead, User, Document, AccountTransaction } = db;
 import { storeNotification } from "../../utils/notificationHelper.js";
 
 const sendStatusUpdateEmail = async (
@@ -207,9 +207,10 @@ export const getStudentsWithApplications = async (req, res) => {
         grades_cgpa: app.grades_cgpa,
         english_proficiency_test: app.english_proficiency_test,
         english_test_overall_score: app.english_test_overall_score,
-        year_awarded: app.year_awarded, // NEW
-        board_university: app.board_university, // NEW
+        year_awarded: app.year_awarded,
+        board_university: app.board_university,
         counselor_notes: app.counselor_notes,
+        consultancy_fee: app.consultancy_fee, // ADDED
         created_at: app.created_at,
         student_id: lead.id,
         user_id: lead.user_id,
@@ -248,7 +249,7 @@ export const getStudentApplications = async (req, res) => {
       study_level: app.study_level,
       grades_cgpa: app.grades_cgpa,
       year_awarded: app.year_awarded,
-      board_university: app.board_university, // NEW
+      board_university: app.board_university,
       english_proficiency_test: app.english_proficiency_test,
       english_test_overall_score: app.english_test_overall_score,
       target_university: app.target_university,
@@ -256,6 +257,7 @@ export const getStudentApplications = async (req, res) => {
       target_country: app.target_country,
       status: app.status,
       counselor_notes: app.counselor_notes,
+      consultancy_fee: app.consultancy_fee, // ADDED
       created_at: app.created_at,
     }));
 
@@ -305,7 +307,8 @@ export const getAssignedStudents = async (req, res) => {
 
 export const createApplication = async (req, res) => {
   try {
-    const { user_id, ...applicationData } = req.body;
+    const { user_id, consultancy_fee, ...applicationData } = req.body;
+
     const counsellorId = req.user?.id;
     const isAdmin = req.user?.role === "admin";
 
@@ -341,6 +344,25 @@ export const createApplication = async (req, res) => {
       });
     }
 
+    // Validate consultancy fee
+    if (
+      consultancy_fee === undefined ||
+      consultancy_fee === null ||
+      consultancy_fee === ""
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Consultancy fee is required.",
+      });
+    }
+    const feeNum = parseFloat(consultancy_fee);
+    if (isNaN(feeNum) || feeNum < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Consultancy fee must be a positive number.",
+      });
+    }
+
     if (!isAdmin) {
       const allowedLeadStatuses = ["new", "contacted", "counseling"];
       if (lead.counsellor_id !== counsellorId) {
@@ -356,6 +378,7 @@ export const createApplication = async (req, res) => {
       }
     }
 
+    // Create application
     const application = await Application.create({
       user_id: lead.user_id,
       full_name: applicationData.full_name || lead.name,
@@ -370,15 +393,27 @@ export const createApplication = async (req, res) => {
       grades_cgpa: applicationData.grades_cgpa,
       english_proficiency_test: applicationData.english_proficiency_test,
       english_test_overall_score: applicationData.english_test_overall_score,
-      year_awarded: applicationData.year_awarded, // NEW
-      board_university: applicationData.board_university, // NEW
+      year_awarded: applicationData.year_awarded,
+      board_university: applicationData.board_university,
       counselor_notes: applicationData.counselor_notes,
+      consultancy_fee: feeNum, // use validated fee
     });
 
+    // ✅ Create account transaction BEFORE sending response
+    await AccountTransaction.create({
+      invoice_no: `FEE-${application.id}`,
+      user_id: application.user_id,
+      application_id: application.id,
+      debit: feeNum, // Debit = consultancy fee
+      credit: 0,
+      balance: feeNum, // Starting balance
+      date: new Date(),
+      description: "Initial consultancy fee",
+    });
+
+    // Send email & notifications
     await sendStatusUpdateEmail(application, "inquiry");
 
-
-   
     await logActivity({
       leadId: lead.id,
       actionType: "application_created",
@@ -434,6 +469,7 @@ export const createApplication = async (req, res) => {
       }
     }
 
+    // Finally send success response
     res.status(201).json({
       success: true,
       message: "Application created successfully",
@@ -441,10 +477,13 @@ export const createApplication = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error creating application:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to create application",
-    });
+    // Only send response if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to create application",
+      });
+    }
   }
 };
 
@@ -457,8 +496,26 @@ export const updateApplication = async (req, res) => {
       return res.status(404).json({ message: "Application not found" });
     }
 
-    const updateData = { ...req.body };
-    delete updateData.user_id;
+    // Extract consultancy_fee from body
+    const { consultancy_fee, ...updateData } = req.body;
+
+    // Validate consultancy fee if provided
+    if (
+      consultancy_fee !== undefined &&
+      consultancy_fee !== null &&
+      consultancy_fee !== ""
+    ) {
+      const feeNum = parseFloat(consultancy_fee);
+      if (isNaN(feeNum) || feeNum < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Consultancy fee must be a positive number.",
+        });
+      }
+      updateData.consultancy_fee = feeNum;
+    }
+
+    delete updateData.user_id; // prevent changing the linked user
 
     if (!isAdmin) {
       const lead = await Lead.findOne({
@@ -481,6 +538,7 @@ export const updateApplication = async (req, res) => {
       await sendStatusUpdateEmail(application, req.body.status, oldStatus);
     }
 
+    // (rest of your logging, notification, and response unchanged)
     const lead = await Lead.findOne({
       where: { user_id: application.user_id },
     });
@@ -496,23 +554,10 @@ export const updateApplication = async (req, res) => {
     const student = await User.findByPk(application.user_id, {
       attributes: ["id", "name", "email"],
     });
-    // let message = "Your application was updated.";
-    // if (
-    //   req.body.target_university &&
-    //   req.body.target_university !== oldUniversity
-    // ) {
-    //   message = `University changed to ${req.body.target_university}.`;
-    // } else if (req.body.course && req.body.course !== oldCourse) {
-    //   message = `Course changed to ${req.body.course}.`;
-    // } else if (req.body.status && req.body.status !== oldStatus) {
-    //   message = `Status changed to ${req.body.status}.`;
-    // }
 
-    // Helper to get a readable application identifier
     const getAppIdentifier = (app) => {
-      if (app.target_university && app.course) {
+      if (app.target_university && app.course)
         return `${app.target_university} (${app.course})`;
-      }
       if (app.target_university) return app.target_university;
       if (app.course) return app.course;
       return `Application #${app.id}`;
@@ -528,7 +573,6 @@ export const updateApplication = async (req, res) => {
     } else if (req.body.course && req.body.course !== oldCourse) {
       message = `Course for ${getAppIdentifier(application)} changed to ${req.body.course}.`;
     } else if (req.body.status && req.body.status !== oldStatus) {
-      // Use a user‑friendly status label
       const statusDisplayMap = {
         inquiry: "Inquiry",
         evaluation: "Evaluation",
@@ -571,7 +615,9 @@ export const updateApplication = async (req, res) => {
     });
   } catch (err) {
     console.error("Error updating application:", err);
-    res.status(500).json({ message: "Error updating application" });
+    if (!res.headersSent) {
+      res.status(500).json({ message: "Error updating application" });
+    }
   }
 };
 
