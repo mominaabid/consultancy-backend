@@ -7,6 +7,7 @@ import {
   getTransactionsByApplication,
   getApplicationBalance,
   getAllTransactions,
+  createDebitTransaction,
 } from "../../controllers/admin/account.controller.js";
 
 const router = express.Router();
@@ -16,6 +17,8 @@ router.use(auth);
 router.get("/applications", getApplicationsForAccounts);
 
 router.post("/transactions", createTransaction);
+
+router.post("/debit", createDebitTransaction);
 
 router.get(
   "/transactions/application/:applicationId",

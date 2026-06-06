@@ -737,3 +737,200 @@ export async function sendChatNotificationEmail({
     return { error: error.message, sent: false };
   }
 }
+
+
+// Add these to email.service.js
+
+/**
+ * Send debit notification email (when admin charges a fee)
+ */
+export async function sendDebitNotificationEmail({
+  studentName,
+  studentEmail,
+  applicationDetails,
+  invoiceNumber,
+  debitedAmount,
+  outstandingBalance, // new balance after debit
+  transactionDate,
+  description,
+}) {
+  if (!studentEmail) {
+    console.error('❌ Debit email skipped: No student email provided');
+    return { error: 'No email', sent: false };
+  }
+
+  try {
+    const formattedAmount = new Intl.NumberFormat('en-PK', {
+      style: 'currency',
+      currency: 'PKR',
+    }).format(debitedAmount);
+
+    const formattedBalance = new Intl.NumberFormat('en-PK', {
+      style: 'currency',
+      currency: 'PKR',
+    }).format(outstandingBalance);
+
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Accounts" <${FROM_EMAIL}>`,
+      to: studentEmail,
+      subject: `Fee Debited - Invoice ${invoiceNumber}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; border-radius: 16px; overflow: hidden;">
+          <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 30px 20px; text-align: center;">
+            <h1 style="color: white; margin: 0;">💰 Fee Debited</h1>
+            <p style="color: #fecaca; margin: 10px 0 0 0;">A fee has been charged to your account</p>
+          </div>
+          
+          <div style="padding: 30px; background: white;">
+            <h2 style="color: #1f2937;">Hello ${studentName},</h2>
+            
+            <p style="color: #4b5563; line-height: 1.6;">
+              The following fee has been debited from your account for your application.
+            </p>
+            
+            <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 20px; border-radius: 12px; margin: 25px 0;">
+              <h3 style="color: #dc2626; margin: 0 0 15px 0;">📋 Transaction Details</h3>
+              <table style="width: 100%;">
+                <tr><td style="padding: 8px 0;"><strong>Invoice Number:</strong></td><td>${invoiceNumber}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Application:</strong></td><td>${applicationDetails}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Debited Amount:</strong></td><td style="color: #dc2626; font-weight: bold;">${formattedAmount}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Outstanding Balance:</strong></td><td>${formattedBalance}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Transaction Date:</strong></td><td>${new Date(transactionDate).toLocaleDateString()}</td></tr>
+                ${description ? `<tr><td style="padding: 8px 0;"><strong>Description:</strong></td><td>${description}</td></tr>` : ''}
+              </table>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${process.env.FRONTEND_URL}/student/accounts" 
+                 style="display: inline-block; background: #dc2626; color: white; padding: 12px 32px; 
+                        border-radius: 8px; text-decoration: none; font-weight: bold;">
+                View Account Statement
+              </a>
+            </div>
+          </div>
+        </div>
+      `,
+    });
+
+    if (error) throw error;
+    console.log(`✅ Debit email sent to ${studentEmail}:`, data.id);
+    return { success: true, messageId: data.id };
+  } catch (error) {
+    console.error('❌ Debit email failed:', error);
+    return { error: error.message, sent: false };
+  }
+}
+
+/**
+ * Send credit notification email (when payment received)
+ * Sends to both student and all admin users
+ */
+export async function sendCreditNotificationEmail({
+  studentName,
+  studentEmail,
+  applicationDetails,
+  invoiceNumber,
+  creditedAmount,
+  previousBalance,
+  remainingBalance,
+  transactionDate,
+  description,
+  adminEmails, // array of admin email addresses
+}) {
+  if (!studentEmail) {
+    console.error('❌ Credit email skipped: No student email provided');
+    return { studentSent: false, adminSent: false };
+  }
+
+  const formattedAmount = new Intl.NumberFormat('en-PK', {
+    style: 'currency',
+    currency: 'PKR',
+  }).format(creditedAmount);
+
+  const formattedPrevBalance = new Intl.NumberFormat('en-PK', {
+    style: 'currency',
+    currency: 'PKR',
+  }).format(previousBalance);
+
+  const formattedRemaining = new Intl.NumberFormat('en-PK', {
+    style: 'currency',
+    currency: 'PKR',
+  }).format(remainingBalance);
+
+  const emailHtml = (isAdmin = false) => `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; border-radius: 16px; overflow: hidden;">
+      <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px 20px; text-align: center;">
+        <h1 style="color: white; margin: 0;">✅ Payment Received</h1>
+        <p style="color: #d1fae5; margin: 10px 0 0 0;">${isAdmin ? `Payment from ${studentName}` : 'Your payment has been recorded'}</p>
+      </div>
+      
+      <div style="padding: 30px; background: white;">
+        <h2 style="color: #1f2937;">${isAdmin ? `Payment from ${studentName}` : `Hello ${studentName},`}</h2>
+        
+        <p style="color: #4b5563; line-height: 1.6;">
+          ${isAdmin ? 'A payment has been recorded for the following application.' : 'Your payment has been successfully recorded for your application.'}
+        </p>
+        
+        <div style="background: #ecfdf5; border-left: 4px solid #059669; padding: 20px; border-radius: 12px; margin: 25px 0;">
+          <h3 style="color: #059669; margin: 0 0 15px 0;">📋 Transaction Details</h3>
+          <table style="width: 100%;">
+            <tr><td style="padding: 8px 0;"><strong>Invoice Number:</strong></td><td>${invoiceNumber}</td></tr>
+            <tr><td style="padding: 8px 0;"><strong>Application:</strong></td><td>${applicationDetails}</td></tr>
+            <tr><td style="padding: 8px 0;"><strong>Credited Amount:</strong></td><td style="color: #059669; font-weight: bold;">${formattedAmount}</td></tr>
+            <tr><td style="padding: 8px 0;"><strong>Previous Balance:</strong></td><td>${formattedPrevBalance}</td></tr>
+            <tr><td style="padding: 8px 0;"><strong>Remaining Balance:</strong></td><td>${formattedRemaining}</td></tr>
+            <tr><td style="padding: 8px 0;"><strong>Transaction Date:</strong></td><td>${new Date(transactionDate).toLocaleDateString()}</td></tr>
+            ${description ? `<tr><td style="padding: 8px 0;"><strong>Description:</strong></td><td>${description}</td></tr>` : ''}
+          </table>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${process.env.FRONTEND_URL}${isAdmin ? '/admin/accounts' : '/student/accounts'}" 
+             style="display: inline-block; background: #059669; color: white; padding: 12px 32px; 
+                    border-radius: 8px; text-decoration: none; font-weight: bold;">
+            View Account Statement
+          </a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const results = { studentSent: false, adminSent: false };
+
+  // Send to student
+  try {
+    const { data, error } = await resend.emails.send({
+      from: `"Educatia Accounts" <${FROM_EMAIL}>`,
+      to: studentEmail,
+      subject: `Payment Received - Invoice ${invoiceNumber}`,
+      html: emailHtml(false),
+    });
+    if (error) throw error;
+    console.log(`✅ Credit email sent to student ${studentEmail}:`, data.id);
+    results.studentSent = true;
+  } catch (error) {
+    console.error('❌ Credit email to student failed:', error);
+    results.studentSent = false;
+  }
+
+  // Send to all admins
+  if (adminEmails && adminEmails.length) {
+    for (const adminEmail of adminEmails) {
+      try {
+        const { data, error } = await resend.emails.send({
+          from: `"Educatia Accounts" <${FROM_EMAIL}>`,
+          to: adminEmail,
+          subject: `Payment Received from ${studentName} - Invoice ${invoiceNumber}`,
+          html: emailHtml(true),
+        });
+        if (error) throw error;
+        console.log(`✅ Credit email sent to admin ${adminEmail}:`, data.id);
+        results.adminSent = true;
+      } catch (error) {
+        console.error(`❌ Credit email to admin ${adminEmail} failed:`, error);
+      }
+    }
+  }
+
+  return results;
+}

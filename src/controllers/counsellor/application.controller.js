@@ -12,10 +12,49 @@ import {
   sendVisaFiledEmail,
   sendVisaApprovedEmail,
   sendApplicationRejectedEmail,
+  sendDebitNotificationEmail,
 } from "../../services/email.service.js";
 
 const { Application, Lead, User, Document, AccountTransaction } = db;
 import { storeNotification } from "../../utils/notificationHelper.js";
+
+// ---------- Helper functions (added for the new feature) ----------
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amount);
+};
+
+/**
+ * Retrieve student details and application reference for a given application ID.
+ * @param {number} applicationId
+ * @returns {Promise<{studentName: string, appReference: string, userId: number}>}
+ */
+async function getStudentAndAppDetails(applicationId) {
+  const application = await Application.findByPk(applicationId, {
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: ["id", "name"],
+      },
+    ],
+  });
+  if (!application) {
+    throw new Error(`Application with id ${applicationId} not found`);
+  }
+  const student = application.user;
+  if (!student || !student.id) {
+    throw new Error(`No associated user for application ${applicationId}`);
+  }
+  return {
+    studentName: student.name || "Student",
+    appReference: application.id.toString(), // use ID as reference; can be customised if a reference field exists
+    userId: student.id,
+  };
+}
+// ----------------------------------------------------------------
 
 const sendStatusUpdateEmail = async (
   application,
@@ -210,7 +249,7 @@ export const getStudentsWithApplications = async (req, res) => {
         year_awarded: app.year_awarded,
         board_university: app.board_university,
         counselor_notes: app.counselor_notes,
-        consultancy_fee: app.consultancy_fee, // ADDED
+        consultancy_fee: app.consultancy_fee,
         created_at: app.created_at,
         student_id: lead.id,
         user_id: lead.user_id,
@@ -257,7 +296,7 @@ export const getStudentApplications = async (req, res) => {
       target_country: app.target_country,
       status: app.status,
       counselor_notes: app.counselor_notes,
-      consultancy_fee: app.consultancy_fee, // ADDED
+      consultancy_fee: app.consultancy_fee,
       created_at: app.created_at,
     }));
 
@@ -396,22 +435,96 @@ export const createApplication = async (req, res) => {
       year_awarded: applicationData.year_awarded,
       board_university: applicationData.board_university,
       counselor_notes: applicationData.counselor_notes,
-      consultancy_fee: feeNum, // use validated fee
+      consultancy_fee: feeNum,
     });
 
-    // ✅ Create account transaction BEFORE sending response
+    // ✅ Create account transaction
     await AccountTransaction.create({
       invoice_no: `FEE-${application.id}`,
       user_id: application.user_id,
       application_id: application.id,
-      debit: feeNum, // Debit = consultancy fee
+      debit: feeNum,
       credit: 0,
-      balance: feeNum, // Starting balance
+      balance: feeNum,
       date: new Date(),
       description: "Initial consultancy fee",
     });
 
-    // Send email & notifications
+    // --------------------------------------------------------------
+    // Store notification for student about consultancy fee added
+    // --------------------------------------------------------------
+    (async () => {
+      try {
+        const { studentName, appReference, userId } =
+          await getStudentAndAppDetails(application.id);
+        const transactionDate = new Date().toISOString();
+        const feeAmount = feeNum;
+
+        const message = `Consultancy Fee Added: ${formatCurrency(feeAmount)} for application ${appReference}. Date: ${new Date(transactionDate).toLocaleString()}`;
+
+        await storeNotification(userId, "consultancy_fee_added", message, {
+          studentName,
+          applicationId: application.id,
+          applicationReference: appReference,
+          amount: feeAmount,
+          transactionType: "Consultancy Fee Added",
+          transactionDate: transactionDate,
+        });
+
+        // Send SSE to student
+        sseManager.sendToUser(userId, {
+          type: "consultancy_fee_added",
+          message,
+          metadata: {
+            applicationId: application.id,
+            amount: feeAmount,
+            transactionDate,
+          },
+        });
+      } catch (err) {
+        console.error(
+          "Failed to store consultancy fee notification or send SSE:",
+          err,
+        );
+      }
+    })();
+    // --------------------------------------------------------------
+
+    // ✅ Send email notification for the initial fee debit (non-blocking)
+    (async () => {
+      try {
+        const student = await db.User.findByPk(lead.user_id, {
+          attributes: ["id", "name", "email"],
+        });
+        const studentName = student?.name || lead.name;
+        const studentEmail = student?.email || lead.email;
+
+        const applicationDetails = `${application.target_university} (${application.course})`;
+
+        // Fetch the created transaction to get invoice number
+        const createdTx = await db.AccountTransaction.findOne({
+          where: { application_id: application.id, debit: feeNum },
+          order: [["id", "DESC"]],
+        });
+
+        if (createdTx) {
+          await sendDebitNotificationEmail({
+            studentName,
+            studentEmail,
+            applicationDetails,
+            invoiceNumber: createdTx.invoice_no,
+            debitedAmount: feeNum,
+            outstandingBalance: feeNum, // initial balance after debit
+            transactionDate: new Date(),
+            description: "Initial consultancy fee",
+          });
+        }
+      } catch (emailErr) {
+        console.error("Failed to send initial debit email:", emailErr);
+      }
+    })();
+
+    // Send status email and notifications
     await sendStatusUpdateEmail(application, "inquiry");
 
     await logActivity({
@@ -469,7 +582,6 @@ export const createApplication = async (req, res) => {
       }
     }
 
-    // Finally send success response
     res.status(201).json({
       success: true,
       message: "Application created successfully",
@@ -477,7 +589,6 @@ export const createApplication = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error creating application:", error);
-    // Only send response if headers haven't been sent yet
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
@@ -496,10 +607,8 @@ export const updateApplication = async (req, res) => {
       return res.status(404).json({ message: "Application not found" });
     }
 
-    // Extract consultancy_fee from body
     const { consultancy_fee, ...updateData } = req.body;
 
-    // Validate consultancy fee if provided
     if (
       consultancy_fee !== undefined &&
       consultancy_fee !== null &&
@@ -515,7 +624,7 @@ export const updateApplication = async (req, res) => {
       updateData.consultancy_fee = feeNum;
     }
 
-    delete updateData.user_id; // prevent changing the linked user
+    delete updateData.user_id;
 
     if (!isAdmin) {
       const lead = await Lead.findOne({
@@ -538,7 +647,6 @@ export const updateApplication = async (req, res) => {
       await sendStatusUpdateEmail(application, req.body.status, oldStatus);
     }
 
-    // (rest of your logging, notification, and response unchanged)
     const lead = await Lead.findOne({
       where: { user_id: application.user_id },
     });
