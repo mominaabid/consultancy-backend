@@ -10,6 +10,16 @@ import { storeNotification } from "../utils/notificationHelper.js";
 
 const { Lead, User, PasswordResetToken, LeadEducation } = db;
 
+function validateNoDuplicateDegrees(educationArray) {
+  if (!educationArray || !Array.isArray(educationArray)) return null;
+  const degrees = educationArray.map((edu) => edu.degree);
+  const uniqueDegrees = new Set(degrees);
+  if (degrees.length !== uniqueDegrees.size) {
+    return "Duplicate degrees are not allowed for a lead.";
+  }
+  return null;
+}
+
 async function ensureConversation(
   studentId,
   counsellorId,
@@ -289,6 +299,11 @@ export async function createLead(req, res) {
       await handleLeadEducation(lead.id, req.body.education);
     }
 
+    const degreeError = validateNoDuplicateDegrees(req.body.education);
+    if (degreeError) {
+      return res.status(400).json({ message: degreeError });
+    }
+
     await logActivity({
       leadId: lead.id,
       actionType: "lead_created",
@@ -492,6 +507,11 @@ export async function updateLead(req, res) {
           });
         }
       }
+    }
+
+    const degreeError = validateNoDuplicateDegrees(req.body.education);
+    if (degreeError) {
+      return res.status(400).json({ message: degreeError });
     }
 
     if (sanitizedBody.phone) {

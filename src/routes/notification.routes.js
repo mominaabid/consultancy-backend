@@ -60,4 +60,16 @@ router.patch("/:id/read", authMiddleware, async (req, res) => {
   }
 });
 
+// DELETE /api/notifications
+router.delete("/", authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    await Notification.destroy({ where: { user_id: userId } });
+    res.json({ success: true, message: "All notifications deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
 export default router;

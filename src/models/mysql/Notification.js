@@ -39,13 +39,15 @@ const Notification = sequelize.define(
   {
     tableName: "notifications",
     timestamps: true, // automatically adds created_at & updated_at
+    createdAt: "created_at",
+    updatedAt: "updated_at",
     indexes: [
       {
         name: "idx_user_read",
         fields: ["user_id", "is_read"],
       },
     ],
-  }
+  },
 );
 
 // Association
