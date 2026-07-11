@@ -8,8 +8,13 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 
 import { connectMongo } from "./src/config/mongo.js";
-import sequelize from "./src/config/db.js";
-import "./src/models/mysql/index.js";
+// ✅ Remove Sequelize import
+// import sequelize from "./src/config/db.js";
+// ✅ Remove Sequelize models import
+// import "./src/models/mysql/index.js";
+
+// ✅ Import mysql2/promise connection
+import db from "./src/config/db.js";
 import routes from "./src/routes/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -58,20 +63,23 @@ const PORT = process.env.PORT || 3001;
 
 async function start() {
   try {
+    // ✅ Connect to MongoDB
     await connectMongo();
-    await sequelize.authenticate();
-    console.log("✅ MySQL connected");
+    console.log("✅ MongoDB connected");
+
+    // ✅ Test MySQL connection (mysql2/promise)
+    await db.query('SELECT 1');
+    console.log("✅ MySQL connected (mysql2/promise)");
 
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📁 Uploads served from: ${UPLOADS_DIR}`);
+      console.log(`⏰ Session expires in: 2 hours`);
     });
 
-    // server.listen(PORT, "0.0.0.0", () => {
-    //   console.log(`Server running  on http://192.168.1.4:${PORT}`);
-    // });
   } catch (err) {
     console.error("❌ Server startup failed:", err);
+    process.exit(1);
   }
 }
 

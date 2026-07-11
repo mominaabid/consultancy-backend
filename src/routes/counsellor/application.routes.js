@@ -8,6 +8,8 @@ import {
   updateApplication,
   deleteApplication,
   getAssignedStudents,
+  getLeadEducation,
+  updateApplicationStatus,
 } from "../../controllers/counsellor/application.controller.js";
 import auth from "../../middleware/auth.middleware.js";
 
@@ -32,11 +34,13 @@ router.put(
   updateApplicationStatusAsCounsellor,
 );
 router.get("/applications/stats", getApplicationStats);
-
+router.get('/leads/:leadId', getLeadEducation);
 // New routes
 router.get("/assigned-students", getAssignedStudents);
 router.post("/applications", createApplication);
-router.put("/applications/:id", updateApplication);
+// routes/counsellor.routes.js
+router.put("/applications/:id/status", updateApplicationStatus);  // ← For status only
+router.put("/applications/:id", updateApplication);              // ← For full edit
 router.delete("/applications/:id", deleteApplication);
 
 export default router;

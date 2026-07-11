@@ -1,6 +1,8 @@
+// src/controllers/lead.controller.js
 import crypto from "crypto";
 import db from "../models/mysql/index.js";
-const { Op } = db.Sequelize;
+// ✅ IMPORT RAW DATABASE CONNECTION
+import rawDb from "../config/db.js";
 import { sendPasswordSetupEmail } from "../services/email.service.js";
 import { logActivity } from "../services/activityLog.service.js";
 import { sendLeadAssignmentEmail } from "../services/counsellorEmail.service.js";
@@ -10,15 +12,25 @@ import { storeNotification } from "../utils/notificationHelper.js";
 
 const { Lead, User, PasswordResetToken, LeadEducation } = db;
 
+// ✅ Helper function for search conditions (replaces Op.or)
+function buildSearchConditions(searchTerm) {
+    if (!searchTerm) return { sql: '', params: [] };
+    return {
+        sql: `AND (l.name LIKE ? OR l.email LIKE ? OR l.phone LIKE ?)`,
+        params: [`%${searchTerm}%`, `%${searchTerm}%`, `%${searchTerm}%`]
+    };
+}
+
 function validateNoDuplicateDegrees(educationArray) {
   if (!educationArray || !Array.isArray(educationArray)) return null;
-  const degrees = educationArray.map((edu) => edu.degree);
+  const degrees = educationArray.map((edu) => edu.degree_id || edu.degree);  // ← FIXED
   const uniqueDegrees = new Set(degrees);
   if (degrees.length !== uniqueDegrees.size) {
     return "Duplicate degrees are not allowed for a lead.";
   }
   return null;
 }
+
 
 async function ensureConversation(
   studentId,
@@ -76,23 +88,55 @@ function computeEnglishTestOverallScore(testType, scores) {
   }
 }
 
+// src/controllers/lead.controller.js
+
+// src/controllers/lead.controller.js
+
 function sanitizeLeadData(data) {
   const sanitized = { ...data };
 
-  const dateFields = ["dob"];
-  for (const field of dateFields) {
-    if (sanitized[field] === "" || sanitized[field] === "Invalid date") {
+  // ✅ Map frontend field names to database column names
+  const fieldMap = {
+    'source': 'source_id',
+    'marital_status': 'marital_status_id',
+    'english_proficiency_test': 'english_test_id',
+    'preferred_country': 'preferred_country',
+  };
+
+  // Apply field mapping
+  Object.keys(fieldMap).forEach(frontendField => {
+    if (sanitized[frontendField] !== undefined) {
+      sanitized[fieldMap[frontendField]] = sanitized[frontendField];
+      if (frontendField !== fieldMap[frontendField]) {
+        delete sanitized[frontendField];
+      }
+    }
+  });
+
+  // Handle date fields
+const dateFields = ["dob"];
+for (const field of dateFields) {
+  if (!sanitized[field]) {
+    sanitized[field] = null;
+  } else {
+    try {
+      const dateObj = new Date(sanitized[field]);
+      if (!isNaN(dateObj.getTime())) {
+        // ✅ Convert to YYYY-MM-DD format
+        sanitized[field] = dateObj.toISOString().split('T')[0];
+      } else {
+        sanitized[field] = null;
+      }
+    } catch {
       sanitized[field] = null;
     }
   }
+}
 
-  const intFields = ["counsellor_id"];
+  // Handle integer fields
+  const intFields = ["counsellor_id", "source_id", "marital_status_id", "english_test_id"];
   for (const field of intFields) {
-    if (
-      sanitized[field] === "" ||
-      sanitized[field] === null ||
-      sanitized[field] === undefined
-    ) {
+    if (sanitized[field] === "" || sanitized[field] === null || sanitized[field] === undefined) {
       sanitized[field] = null;
     } else if (!isNaN(Number(sanitized[field]))) {
       sanitized[field] = Number(sanitized[field]);
@@ -101,48 +145,50 @@ function sanitizeLeadData(data) {
     }
   }
 
-  if (
-    sanitized.english_test_scores === "" ||
-    sanitized.english_test_scores === null
-  ) {
-    sanitized.english_test_scores = null;
-  }
 
-  if (
-    sanitized.english_test_overall_score === "" ||
-    sanitized.english_test_overall_score === null
-  ) {
+
+  if (sanitized.english_test_overall_score === "" || sanitized.english_test_overall_score === null) {
     sanitized.english_test_overall_score = null;
   } else if (!isNaN(parseFloat(sanitized.english_test_overall_score))) {
-    sanitized.english_test_overall_score = parseFloat(
-      sanitized.english_test_overall_score,
-    );
+    sanitized.english_test_overall_score = parseFloat(sanitized.english_test_overall_score);
   } else {
     sanitized.english_test_overall_score = null;
   }
 
-  delete sanitized.study_level;
-  delete sanitized.year_awarded;
-  delete sanitized.grades_cgpa;
-  delete sanitized.board_university;
+  // ✅ Updated valid columns - REMOVED study_level_id
+  const validColumns = [
+    'name', 'email', 'phone', 'dob', 'marital_status_id', 
+    'father_name', 'father_contact', 'home_address', 'source_id', 
+    'preferred_country', 'english_test_id', 
+    'english_test_overall_score',  'counsellor_id',
+    'status', 'profile_picture', 'has_entered_counseling', 'user_id'
+  ];
+
+  Object.keys(sanitized).forEach(key => {
+    if (!validColumns.includes(key)) {
+      delete sanitized[key];
+    }
+  });
 
   return sanitized;
 }
 
+// ✅ FIXED: Use rawDb instead of db for raw queries
 async function handleLeadEducation(leadId, educationArray, transaction = null) {
   if (!educationArray || !Array.isArray(educationArray)) return;
 
-  await LeadEducation.destroy({ where: { lead_id: leadId }, transaction });
+  // ✅ Use rawDb for direct queries
+  await rawDb.query('DELETE FROM lead_educations WHERE lead_id = ?', [leadId]);
 
   if (educationArray.length > 0) {
-    const educationData = educationArray.map((edu) => ({
-      lead_id: leadId,
-      degree: edu.degree,
-      year_awarded: edu.year_awarded,
-      grades_cgpa: edu.grades_cgpa || null,
-      board_university: edu.board_university || null,
-    }));
-    await LeadEducation.bulkCreate(educationData, { transaction });
+    for (const edu of educationArray) {
+      // ✅ Changed 'degree' to 'degree_id'
+      await rawDb.query(
+        `INSERT INTO lead_educations (lead_id, degree_id, year_awarded, grades_cgpa, board_university) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [leadId, edu.degree_id || edu.degree, edu.year_awarded, edu.grades_cgpa || null, edu.board_university || null]
+      );
+    }
   }
 }
 
@@ -173,8 +219,7 @@ async function handleFirstCounselingEntry(lead, actor) {
   }
 
   if (!lead.user_id || lead.user_id !== student.id) {
-    lead.user_id = student.id;
-    await lead.save();
+    await Lead.update({ user_id: student.id }, { where: { id: lead.id } });
   }
 
   const token = crypto.randomBytes(32).toString("hex");
@@ -191,7 +236,7 @@ async function handleFirstCounselingEntry(lead, actor) {
     setupLink,
   });
 
-  await lead.update({ has_entered_counseling: true });
+  await Lead.update({ has_entered_counseling: true }, { where: { id: lead.id } });
 
   await logActivity({
     leadId: lead.id,
@@ -207,7 +252,8 @@ async function handleFirstCounselingEntry(lead, actor) {
       attributes: ["name"],
     });
     const exists = await Conversation.findOne({
-      where: { student_id: student.id, counsellor_id: lead.counsellor_id },
+      student_id: student.id,
+      counsellor_id: lead.counsellor_id,
     });
     if (!exists) {
       await Conversation.create({
@@ -220,30 +266,62 @@ async function handleFirstCounselingEntry(lead, actor) {
     }
   }
 }
+// src/controllers/lead.controller.js - Fixed createLead
 
 export async function createLead(req, res) {
   try {
     let sanitizedBody = sanitizeLeadData(req.body);
 
+    // ✅ FIX: Auto-assign counsellor_id if user is counsellor
+    let counsellorId = null;
+    
+    // If user is counsellor, get their counsellor ID
+ // In lead.controller.js - getAllLeads
+if (req.user.role === "counsellor") {
+  const [counsellorRows] = await rawDb.query(
+    'SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0',
+    [req.user.id]
+  );
+  
+  if (counsellorRows && counsellorRows.length > 0) {
+    sql += ` AND l.counsellor_id = ?`;
+    params.push(counsellorRows[0].id);
+  } else {
+    sql += ` AND 1 = 0`;
+  }
+}
+
     const data = {
       ...sanitizedBody,
       counsellor_id:
         sanitizedBody.counsellor_id === "" || !sanitizedBody.counsellor_id
-          ? req.user.role === "counsellor"
-            ? req.user.id
-            : null
+          ? counsellorId // ✅ Auto-assign if counsellor
           : Number(sanitizedBody.counsellor_id),
     };
 
-    // Normalize email
+    // If admin is assigning to a counsellor, use the provided ID
+    if (req.user.role === "admin" && sanitizedBody.counsellor_id) {
+      data.counsellor_id = Number(sanitizedBody.counsellor_id);
+    }
+
+    // ✅ If counsellor is creating and no counsellor_id is provided, use their own
+    if (req.user.role === "counsellor" && !data.counsellor_id) {
+      const [counsellorRows] = await rawDb.query(
+        'SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0',
+        [req.user.id]
+      );
+      
+      if (counsellorRows && counsellorRows.length > 0) {
+        data.counsellor_id = counsellorRows[0].id;
+      }
+    }
+
     if (data.email) {
       data.email = data.email.trim().toLowerCase();
 
-      // Prevent duplicate lead emails
       const existingLead = await Lead.findOne({
         where: {
           email: data.email,
-          is_deleted: false,
         },
       });
 
@@ -257,11 +335,9 @@ export async function createLead(req, res) {
     if (data.phone) {
       data.phone = data.phone.trim();
 
-      // Prevent duplicate lead phone numbers
       const existingPhoneLead = await Lead.findOne({
         where: {
           phone: data.phone,
-          is_deleted: false,
         },
       });
 
@@ -272,18 +348,14 @@ export async function createLead(req, res) {
       }
     }
 
+    // Fix: Use english_test_id instead of english_proficiency_test
     if (
-      data.english_proficiency_test &&
-      data.english_proficiency_test !== "none"
+      data.english_test_id &&
+      data.english_test_id !== "none"
     ) {
-      if (
-        data.english_test_overall_score !== undefined &&
-        data.english_test_overall_score !== null
-      ) {
-        // already set
-      } else if (data.english_test_scores) {
+      if (data.english_test_scores) {
         data.english_test_overall_score = computeEnglishTestOverallScore(
-          data.english_proficiency_test,
+          data.english_test_id,
           data.english_test_scores,
         );
       }
@@ -291,7 +363,7 @@ export async function createLead(req, res) {
       data.english_test_overall_score = null;
     }
 
-    data.english_test_scores = null;
+    data.english_test_overall_score = data.english_test_overall_score || null;
 
     const lead = await Lead.create(data);
 
@@ -308,14 +380,15 @@ export async function createLead(req, res) {
       leadId: lead.id,
       actionType: "lead_created",
       toValue: lead.status,
-      note: `Lead created via ${lead.source || "unknown"} · Phone: ${lead.phone || "—"} · Country: ${lead.preferred_country || "—"}`,
+      note: `Lead created · Phone: ${lead.phone || "—"} · Country: ${lead.preferred_country || "—"}`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
 
-    // ---------- Email for counsellor ----------
+    // ✅ If lead is assigned to a counsellor, send email notification
     if (lead.counsellor_id) {
+      // Get counsellor user info
       const counsellorUser = await User.findOne({
         where: { id: lead.counsellor_id, role: "counsellor" },
         attributes: ["id", "name", "email"],
@@ -325,12 +398,36 @@ export async function createLead(req, res) {
         sendLeadAssignmentEmail({
           counsellorEmail: counsellorUser.email,
           counsellorName: counsellorUser.name,
-          lead: lead.toJSON(),
+          lead: lead,
         }).catch((err) => console.error("Background email error:", err));
       }
+
+      // Send SSE notification to counsellor
+      const sseEvent = {
+        type: "lead_created",
+        message: `New lead "${lead.name}" has been created and assigned to you.`,
+        leadId: lead.id,
+        leadName: lead.name,
+        counsellorId: lead.counsellor_id,
+        counsellorName: counsellorUser?.name || "Counsellor",
+      };
+
+      sseManager.sendToUser(lead.counsellor_id.toString(), sseEvent);
+
+      await storeNotification(
+        lead.counsellor_id,
+        "lead_created",
+        `New lead "${lead.name}" has been created and assigned to you.`,
+        {
+          leadId: lead.id,
+          leadName: lead.name,
+          counsellorId: lead.counsellor_id,
+          counsellorName: counsellorUser?.name || "Counsellor",
+        },
+      );
     }
 
-    // Notify admins when counsellor creates lead
+    // ✅ If counsellor created the lead, notify admins
     if (req.user.role === "counsellor") {
       const admins = await User.findAll({
         where: { role: "admin", is_active: true },
@@ -363,113 +460,190 @@ export async function createLead(req, res) {
       }
     }
 
-    // Notify assigned counsellor
-    if (lead.counsellor_id) {
-      const counsellorUser = await User.findOne({
-        where: { id: lead.counsellor_id, role: "counsellor" },
-        attributes: ["id", "name", "email"],
-      });
-
-      if (counsellorUser) {
-        const isSelfAssignment =
-          req.user.role === "counsellor" && req.user.id === lead.counsellor_id;
-
-        if (!isSelfAssignment) {
-          if (counsellorUser.email) {
-            sendLeadAssignmentEmail({
-              counsellorEmail: counsellorUser.email,
-              counsellorName: counsellorUser.name,
-              lead: lead.toJSON(),
-            }).catch((err) => console.error("Background email error:", err));
-          }
-
-          const sseEvent = {
-            type: "lead_created",
-            message: `New lead "${lead.name}" has been created and assigned to you.`,
-            leadId: lead.id,
-            leadName: lead.name,
-            counsellorId: counsellorUser.id,
-            counsellorName: counsellorUser.name,
-          };
-
-          sseManager.sendToUser(counsellorUser.id.toString(), sseEvent);
-
-          await storeNotification(
-            counsellorUser.id,
-            "lead_created",
-            `New lead "${lead.name}" has been created and assigned to you.`,
-            {
-              leadId: lead.id,
-              leadName: lead.name,
-              counsellorId: counsellorUser.id,
-              counsellorName: counsellorUser.name,
-            },
-          );
-        }
-      }
-    }
-
     if (lead.status === "counseling" && !lead.has_entered_counseling) {
       await handleFirstCounselingEntry(lead, req.user);
     }
 
-    const leadWithEducation = await Lead.findByPk(lead.id, {
-      include: [
-        { model: User, as: "counsellor" },
-        { model: LeadEducation, as: "education" },
-      ],
-    });
-
-    res.status(201).json(leadWithEducation);
+    res.status(201).json(lead);
   } catch (error) {
-    console.error(error);
+    console.error("❌ Error creating lead:", error);
     res.status(500).json({ message: error.message });
   }
 }
 
+// src/controllers/lead.controller.js
+
+// src/controllers/lead.controller.js
+
+// src/controllers/lead.controller.js
+
+// src/controllers/lead.controller.js
+
 export async function getAllLeads(req, res) {
   try {
-    const where = { is_deleted: false };
-
-    if (req.user.role === "counsellor") {
-      where.counsellor_id = req.user.id;
+    const { page = 1, limit = 10, search, status, counsellor_id, source_id, start, end } = req.query;
+    const offset = (page - 1) * limit;
+    
+    let sql = `
+      SELECT 
+        l.*, 
+        u.name as counsellor_name,
+        c.name as source_name,
+        GROUP_CONCAT(
+          JSON_OBJECT(
+            'id', le.id,
+            'degree_id', le.degree_id,
+            'degree', cv.name,
+            'year_awarded', le.year_awarded,
+            'grades_cgpa', le.grades_cgpa,
+            'board_university', le.board_university
+          )
+        ) as education
+      FROM leads l
+      LEFT JOIN users u ON l.counsellor_id = u.id AND u.is_deleted = 0
+      LEFT JOIN config_values c ON l.source_id = c.id
+      LEFT JOIN lead_educations le ON l.id = le.lead_id
+      LEFT JOIN config_values cv ON le.degree_id = cv.id
+      WHERE l.is_deleted = 0
+    `;
+    const params = [];
+    
+    if (search) {
+      const searchResult = buildSearchConditions(search);
+      sql += ` ${searchResult.sql}`;
+      params.push(...searchResult.params);
     }
-
-    const { start, end } = req.query;
+    
+    if (status) {
+      sql += ` AND l.status = ?`;
+      params.push(status);
+    }
+    
+    if (counsellor_id) {
+      sql += ` AND l.counsellor_id = ?`;
+      params.push(counsellor_id);
+    }
+    
+    if (source_id) {
+      sql += ` AND l.source_id = ?`;
+      params.push(source_id);
+    }
+    
     if (start && end) {
-      where.created_at = {
-        [Op.between]: [new Date(start), new Date(end)],
-      };
+      sql += ` AND l.created_at BETWEEN ? AND ?`;
+      params.push(new Date(start), new Date(end));
     }
-
-    const leads = await Lead.findAll({
-      where,
-      include: [
-        { model: User, as: "counsellor" },
-        { model: LeadEducation, as: "education" },
-      ],
-      order: [["created_at", "DESC"]],
+    
+    // ✅ FIX: For counsellor, get their counsellor table ID
+    if (req.user.role === "counsellor") {
+      // Get the counsellor's ID from the counsellors table
+      const [counsellorRows] = await rawDb.query(
+        'SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0',
+        [req.user.id]
+      );
+      
+      if (counsellorRows && counsellorRows.length > 0) {
+        const counsellorTableId = counsellorRows[0].id;
+        sql += ` AND l.counsellor_id = ?`;
+        params.push(counsellorTableId);
+        console.log(`🔍 Filtering leads by counsellor_table_id: ${counsellorTableId} (user_id: ${req.user.id})`);
+      } else {
+        // If no counsellor record, return no leads
+        sql += ` AND 1 = 0`;
+        console.log(`❌ No counsellor record found for user_id: ${req.user.id}`);
+      }
+    }
+    
+    sql += ` GROUP BY l.id`;
+    
+    let countSql = `SELECT COUNT(*) as total FROM leads l WHERE l.is_deleted = 0`;
+    const countParams = [];
+    
+    // ✅ FIX: Also fix the count query
+    if (req.user.role === "counsellor") {
+      const [counsellorRows] = await rawDb.query(
+        'SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0',
+        [req.user.id]
+      );
+      
+      if (counsellorRows && counsellorRows.length > 0) {
+        const counsellorTableId = counsellorRows[0].id;
+        countSql += ` AND l.counsellor_id = ?`;
+        countParams.push(counsellorTableId);
+      } else {
+        countSql += ` AND 1 = 0`;
+      }
+    }
+    
+    const [countResult] = await rawDb.query(countSql, countParams);
+    const total = countResult[0]?.total || 0;
+    
+    sql += ` ORDER BY l.created_at DESC LIMIT ? OFFSET ?`;
+    params.push(parseInt(limit), parseInt(offset));
+    
+    const [result] = await rawDb.query(sql, params);
+    const leads = result || [];
+    
+    const formattedLeads = leads.map(lead => {
+      let education = [];
+      if (lead.education) {
+        try {
+          const eduStr = lead.education;
+          const cleaned = eduStr.startsWith('[') ? eduStr : `[${eduStr}]`;
+          education = JSON.parse(cleaned);
+        } catch (e) {
+          education = [];
+        }
+      }
+      return {
+        ...lead,
+        education: education
+      };
     });
-
-    res.json(leads);
+    
+    res.json({
+      success: true,
+      data: {
+        leads: formattedLeads,
+        pagination: {
+          total: total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / limit)
+        }
+      }
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
+    console.error("Get leads error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch leads",
+      error: error.message
+    });
   }
 }
 
 export async function getLeadById(req, res) {
   try {
-    const lead = await Lead.findByPk(req.params.id, {
-      include: [
-        { model: User, as: "counsellor" },
-        { model: LeadEducation, as: "education" },
-      ],
-    });
+    const lead = await Lead.findByPk(req.params.id);
 
     if (!lead || lead.is_deleted) {
       return res.status(404).json({ message: "Lead not found." });
     }
+
+    // ✅ Get education
+    const educationResult = await rawDb.query(
+      `SELECT le.*, cv.name as degree_name
+       FROM lead_educations le
+       LEFT JOIN config_values cv ON le.degree_id = cv.id
+       WHERE le.lead_id = ?`,
+      [lead.id]
+    );
+    const education = Array.isArray(educationResult) && Array.isArray(educationResult[0]) 
+      ? educationResult[0] 
+      : educationResult;
+    
+    lead.education = education || [];
 
     res.json(lead);
   } catch (error) {
@@ -488,16 +662,13 @@ export async function updateLead(req, res) {
 
     let sanitizedBody = sanitizeLeadData(req.body);
 
-    // Normalize email
     if (sanitizedBody.email) {
       sanitizedBody.email = sanitizedBody.email.trim().toLowerCase();
 
-      // Prevent duplicate emails
       if (sanitizedBody.email !== lead.email?.trim().toLowerCase()) {
         const existingLead = await Lead.findOne({
           where: {
             email: sanitizedBody.email,
-            is_deleted: false,
           },
         });
 
@@ -517,12 +688,10 @@ export async function updateLead(req, res) {
     if (sanitizedBody.phone) {
       sanitizedBody.phone = sanitizedBody.phone.trim();
 
-      // Prevent duplicate phone numbers
       if (sanitizedBody.phone !== lead.phone?.trim()) {
         const existingPhoneLead = await Lead.findOne({
           where: {
             phone: sanitizedBody.phone,
-            is_deleted: false,
           },
         });
 
@@ -539,13 +708,13 @@ export async function updateLead(req, res) {
       "email",
       "phone",
       "preferred_country",
-      "source",
+      "source_id",
       "dob",
-      "marital_status",
+      "marital_status_id",
       "father_name",
       "father_contact",
       "home_address",
-      "english_proficiency_test",
+      "english_test_id",
       "english_test_overall_score",
     ];
 
@@ -561,11 +730,8 @@ export async function updateLead(req, res) {
       let isChanged = false;
 
       if (numericFields.includes(field)) {
-        const oldNum =
-          oldVal === null || oldVal === "" ? null : parseFloat(oldVal);
-
-        const newNum =
-          newVal === null || newVal === "" ? null : parseFloat(newVal);
+        const oldNum = oldVal === null || oldVal === "" ? null : parseFloat(oldVal);
+        const newNum = newVal === null || newVal === "" ? null : parseFloat(newVal);
 
         if (oldNum !== newNum && !(isNaN(oldNum) && isNaN(newNum))) {
           isChanged = true;
@@ -584,18 +750,12 @@ export async function updateLead(req, res) {
     let updateData = { ...sanitizedBody };
 
     if (
-      sanitizedBody.english_proficiency_test &&
-      sanitizedBody.english_proficiency_test !== "none"
+      sanitizedBody.english_test_id &&
+      sanitizedBody.english_test_id !== "none"
     ) {
-      if (
-        sanitizedBody.english_test_overall_score !== undefined &&
-        sanitizedBody.english_test_overall_score !== null
-      ) {
-        updateData.english_test_overall_score =
-          sanitizedBody.english_test_overall_score;
-      } else if (sanitizedBody.english_test_scores) {
+      if (sanitizedBody.english_test_scores) {
         updateData.english_test_overall_score = computeEnglishTestOverallScore(
-          sanitizedBody.english_proficiency_test,
+          sanitizedBody.english_test_id,
           sanitizedBody.english_test_scores,
         );
       }
@@ -603,59 +763,31 @@ export async function updateLead(req, res) {
       updateData.english_test_overall_score = null;
     }
 
-    updateData.english_test_scores = null;
 
-    await lead.update(updateData);
 
-    // --- Education change detection ---
-    // Fetch existing education records for this lead
-    const existingEducation = await LeadEducation.findAll({
-      where: { lead_id: lead.id },
-      attributes: ["degree", "year_awarded", "grades_cgpa", "board_university"],
-      raw: true,
-    });
+    await Lead.update(updateData, { where: { id: lead.id } });
 
-    // Normalization helper: ensures consistent shape for comparison
-    const normalizeEducation = (edu) => {
-      if (!Array.isArray(edu)) return [];
-      return edu.map((e) => ({
-        degree: e.degree || null,
-        year_awarded: e.year_awarded || null,
-        grades_cgpa: e.grades_cgpa || null,
-        board_university: e.board_university || null,
-      }));
-    };
-
-    const oldEdu = normalizeEducation(existingEducation);
-    const newEdu = normalizeEducation(req.body.education || []);
-
-    // Deep compare (JSON stringify is safe because order of keys is consistent)
-    const educationChanged = JSON.stringify(oldEdu) !== JSON.stringify(newEdu);
-
-    if (req.body.education !== undefined && educationChanged) {
+    if (req.body.education !== undefined) {
       await handleLeadEducation(lead.id, req.body.education);
       changes.push("Education entries updated");
     }
-    // --- End education change detection ---
 
     await logActivity({
       leadId: lead.id,
       actionType: "lead_updated",
-      note:
-        changes.length > 0
-          ? `Updated — ${changes.join(" · ")}`
-          : "Lead details updated",
+      note: changes.length > 0 ? `Updated — ${changes.join(" · ")}` : "Lead details updated",
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
 
-    const updatedLead = await Lead.findByPk(lead.id, {
-      include: [
-        { model: User, as: "counsellor" },
-        { model: LeadEducation, as: "education" },
-      ],
-    });
+    const updatedLead = await Lead.findByPk(lead.id);
+    // ✅ Use rawDb for education
+    const education = await rawDb.query(
+      'SELECT * FROM lead_educations WHERE lead_id = ?',
+      [lead.id]
+    );
+    updatedLead.education = education;
 
     res.json(updatedLead);
   } catch (error) {
@@ -667,9 +799,19 @@ export async function updateLead(req, res) {
 export async function assignCounsellor(req, res) {
   try {
     console.log("🔥 ASSIGN API HIT");
-    const newCounsellorId = req.body.counsellor_id
-      ? Number(req.body.counsellor_id)
-      : null;
+    let newCounsellorId = req.body.counsellor_id ? Number(req.body.counsellor_id) : null;
+
+    // ✅ If counsellor is assigning without specifying, assign to themselves
+    if (req.user.role === "counsellor" && !newCounsellorId) {
+      const [counsellorRows] = await rawDb.query(
+        'SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0',
+        [req.user.id]
+      );
+      
+      if (counsellorRows && counsellorRows.length > 0) {
+        newCounsellorId = counsellorRows[0].id;
+      }
+    }
 
     const lead = await Lead.findByPk(req.params.id);
     if (!lead) return res.status(404).json({ message: "Lead not found." });
@@ -682,80 +824,26 @@ export async function assignCounsellor(req, res) {
       ? await User.findByPk(newCounsellorId, { attributes: ["name", "email"] })
       : null;
 
-    lead.counsellor_id = newCounsellorId;
-    await lead.save();
+    await Lead.update({ counsellor_id: newCounsellorId }, { where: { id: lead.id } });
 
-    if (newCounsellorId && lead.user_id) {
-      const studentUser = await User.findByPk(lead.user_id, {
-        attributes: ["name"],
-      });
-      if (studentUser) {
-        await ensureConversation(
-          lead.user_id,
-          newCounsellorId,
-          lead.name,
-          newCounsellor?.name || "Counsellor",
-        );
-      }
-    }
-
-    await logActivity({
-      leadId: lead.id,
-      actionType: "counsellor_assigned",
-      fromValue: prevCounsellor?.name || "Unassigned",
-      toValue: newCounsellor?.name || "Unassigned",
-      note: `Counsellor changed from "${prevCounsellor?.name || "Unassigned"}" to "${newCounsellor?.name || "Unassigned"}"`,
-      performedBy: req.user.id,
-      performedByRole: req.user.role,
-      performedByName: req.user.name,
+    return res.status(200).json({
+      success: true,
+      message: "Counsellor assignment updated successfully.",
+      data: {
+        lead_id: lead.id,
+        counsellor_id: newCounsellorId,
+        previous_counsellor: prevCounsellor?.name || null,
+        new_counsellor: newCounsellor?.name || null,
+      },
     });
-
-    if (newCounsellor?.email) {
-      try {
-        await sendLeadAssignmentEmail({
-          counsellorEmail: newCounsellor.email,
-          counsellorName: newCounsellor.name,
-          lead: lead.toJSON(),
-        });
-      } catch (err) {
-        console.error("Email error:", err);
-      }
-    }
-
-    if (newCounsellorId && newCounsellor) {
-      const event = {
-        type: "lead_assigned",
-        message: `A new lead "${lead.name}" has been assigned to you.`,
-        leadId: lead.id,
-        leadName: lead.name,
-        counsellorId: newCounsellorId,
-        assignedBy: req.user.name,
-        assignedByRole: req.user.role,
-      };
-      const sent = sseManager.sendToUser(newCounsellorId.toString(), event);
-      if (sent)
-        console.log(`SSE lead_assigned sent to counsellor ${newCounsellorId}`);
-      else console.log(`Counsellor ${newCounsellorId} not connected via SSE`);
-
-      await storeNotification(
-        newCounsellorId,
-        "lead_assigned",
-        `New lead assigned: ${lead.name}`,
-        {
-          leadId: lead.id,
-          leadName: lead.name,
-          assignedBy: req.user.name,
-          assignedByRole: req.user.role,
-        },
-      );
-    }
-
-    res.json(lead);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
   }
 }
+
+// src/controllers/lead.controller.js
+// src/controllers/lead.controller.js
 
 export async function updateStage(req, res) {
   try {
@@ -767,15 +855,16 @@ export async function updateStage(req, res) {
 
     if (!status) return res.status(400).json({ message: "Status is required" });
 
-    await lead.update({ status });
+    await Lead.update({ status }, { where: { id: lead.id } });
 
     if (lead.user_id) {
       const statusLabels = {
         new: "New",
         contacted: "Contacted",
         counseling: "Counseling",
-        visa_filed: "Visa Filed",
-        visa_approved: "Visa Approved",
+        evaluated: "Evaluated",
+        applied: "Applied",
+        visa: "Visa",
         success: "Success",
         rejected: "Rejected",
       };
@@ -792,24 +881,41 @@ export async function updateStage(req, res) {
       );
     }
 
+    // ✅ Log the stage change with proper note
     await logActivity({
       leadId: lead.id,
       actionType: "stage_changed",
-      from_value: oldStatus,
-      to_value: status,
-      note: `Moved from ${oldStatus} to ${status}`,
+      fromValue: oldStatus,
+      toValue: status,
+      note: note || `Moved from ${oldStatus} to ${status}`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
     });
 
+    // ✅ If there's a separate note, log it as note_added
+    if (note && note.trim()) {
+      await logActivity({
+        leadId: lead.id,
+        actionType: "note_added",
+        fromValue: null,
+        toValue: null,
+        note: note,
+        performedBy: req.user.id,
+        performedByRole: req.user.role,
+        performedByName: req.user.name,
+      });
+    }
+
+    // ✅ Also add note to activity log if it was a stage change with note
     if (note && note.trim()) {
       const stageLabels = {
         new: "New",
         contacted: "Contacted",
         counseling: "Counseling",
-        visa_filed: "Visa Filed",
-        visa_approved: "Visa Approved",
+        evaluated: "Evaluated",
+        applied: "Applied",
+        visa: "Visa",
         success: "Success",
         rejected: "Rejected",
       };
@@ -819,6 +925,8 @@ export async function updateStage(req, res) {
       await logActivity({
         leadId: lead.id,
         actionType: "note_added",
+        fromValue: null,
+        toValue: null,
         note: `[${newStageLabel}] ${note}`,
         performedBy: req.user.id,
         performedByRole: req.user.role,
@@ -826,17 +934,24 @@ export async function updateStage(req, res) {
       });
     }
 
-    const isMovingToCounseling =
-      status === "counseling" && oldStatus !== "counseling";
+    const isMovingToCounseling = status === "counseling" && oldStatus !== "counseling";
 
     if (isMovingToCounseling && lead.email) {
       await handleFirstCounselingEntry(lead, req.user);
     }
 
-    res.json({ message: "Stage updated successfully", lead });
+    const updatedLead = await Lead.findByPk(lead.id);
+    res.json({ 
+      success: true,
+      message: "Stage updated successfully", 
+      lead: updatedLead 
+    });
   } catch (error) {
     console.error("Stage update error:", error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: error.message 
+    });
   }
 }
 
@@ -854,7 +969,7 @@ export async function deleteLead(req, res) {
       performedByName: req.user.name,
     });
 
-    await lead.update({ is_deleted: true });
+    await Lead.update({ is_deleted: true }, { where: { id: lead.id } });
 
     res.json({ message: "Lead deleted successfully." });
   } catch (error) {
@@ -873,11 +988,7 @@ export async function getStageNotes(req, res) {
       action_type: "stage_note",
     };
 
-    if (stage) {
-      where.metadata = { stage };
-    }
-
-    res.json({});
+    res.json({ data: [] });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });

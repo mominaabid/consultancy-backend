@@ -1,10 +1,10 @@
-import User from "../../models/mysql/User.js";
+import db from "../../models/mysql/index.js";
 
 export const getAdminProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.db.User.id;
 
-    const admin = await User.findOne({
+    const admin = await db.User.findOne({
       where: {
         id: userId,
         is_deleted: false,
@@ -43,14 +43,14 @@ export const getAdminProfile = async (req, res) => {
 
 export const updateAdminProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.db.User.id;
     const { name } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Name is required" });
     }
 
-    const admin = await User.findOne({
+    const admin = await db.User.findOne({
       where: { id: userId, is_deleted: false, role: "admin" },
     });
 
@@ -79,7 +79,7 @@ export const updateAdminProfile = async (req, res) => {
 
 export const uploadAdminProfileImage = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.db.User.id;
 
     if (!req.file) {
       return res.status(400).json({
@@ -89,7 +89,7 @@ export const uploadAdminProfileImage = async (req, res) => {
 
     const relativePath = `uploads/${req.file.filename}`;
 
-    const admin = await User.findOne({
+    const admin = await db.User.findOne({
       where: {
         id: userId,
         is_deleted: false,

@@ -1,25 +1,25 @@
-import Notification from "../models/mysql/Notification.js";
+// src/utils/notificationHelper.js
+import db from "../models/mysql/index.js";
 
 export async function storeNotification(userId, type, message, metadata = {}) {
-  if (!userId) {
-    throw new Error("User ID is required to store notification");
-  }
+    if (!userId) {
+        throw new Error("User ID is required to store notification");
+    }
 
-  try {
-    const safeMetadata = typeof metadata === "object" ? metadata : {};
+    try {
+        const notification = await db.Notification.create({
+            user_id: userId,
+            type,
+            message,
+            metadata: JSON.stringify(metadata),
+            is_read: 0,
+            created_at: new Date()
+        });
 
-    const notification = await Notification.create({
-      user_id: userId,
-      type,
-      message,
-      metadata: safeMetadata,
-      is_read: false,
-    });
-
-    console.log(`📦 Stored notification for user ${userId}: ${type}`);
-    return notification.toJSON();
-  } catch (err) {
-    console.error("Failed to store notification:", err);
-    throw err;
-  }
+        console.log(`📦 Stored notification for user ${userId}: ${type}`);
+        return notification;
+    } catch (err) {
+        console.error("Failed to store notification:", err);
+        throw err;
+    }
 }

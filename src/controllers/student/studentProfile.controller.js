@@ -1,10 +1,9 @@
-import Lead from "../../models/mysql/Lead.js";
-import User from "../../models/mysql/User.js";
-import LeadEducation from "../../models/mysql/LeadEducation.js";
+import db from "../../models/mysql/index.js";
+
 
 export const uploadProfilePicture = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.db.db.db.User.id;
 
     if (!req.file) {
       return res.status(400).json({ message: "No image file provided" });
@@ -12,11 +11,11 @@ export const uploadProfilePicture = async (req, res) => {
 
     const relativePath = `uploads/${req.file.filename}`;
 
-    // const student = await Lead.findOne({
+    // const student = await db.db.db.Lead.findOne({
     //   where: { user_id: userId, is_deleted: false },
     // });
 
-    const student = await Lead.findOne({
+    const student = await db.db.db.Lead.findOne({
       where: { user_id: userId, is_deleted: false },
       include: [
         {
@@ -60,9 +59,9 @@ export const uploadProfilePicture = async (req, res) => {
 
 export const getStudentProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.db.db.db.User.id;
 
-    const student = await Lead.findOne({
+    const student = await db.db.db.Lead.findOne({
       where: { user_id: userId, is_deleted: false },
       include: [
         {
@@ -93,10 +92,10 @@ export const getStudentProfile = async (req, res) => {
 
 export const updateStudentProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.db.db.db.User.id;
     const { name, email, phone, preferred_country, study_level } = req.body;
 
-    const student = await Lead.findOne({
+    const student = await db.db.db.Lead.findOne({
       where: {
         user_id: userId,
         is_deleted: false,

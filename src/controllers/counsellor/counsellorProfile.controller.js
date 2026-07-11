@@ -1,5 +1,5 @@
-import { Counsellor } from "../../models/mysql/counsellor.js";
-import User from "../../models/mysql/User.js";
+import db from "../../models/mysql/index.js";
+
 import sequelize from "../../config/db.js";
 import { Op } from "sequelize";
 
@@ -7,7 +7,7 @@ const normalizeCNIC = (cnic) => cnic.replace(/-/g, "");
 
 export const uploadProfileImage = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.db.db.User.id;
 
     if (!req.file) {
       return res.status(400).json({ message: "No image file provided" });
@@ -15,7 +15,7 @@ export const uploadProfileImage = async (req, res) => {
 
     const relativePath = `uploads/${req.file.filename}`;
 
-    const counsellor = await Counsellor.findOne({
+    const counsellor = await db.db.Counsellor.findOne({
       where: { user_id: userId, is_deleted: false },
     });
 
@@ -23,7 +23,7 @@ export const uploadProfileImage = async (req, res) => {
       return res.status(404).json({ message: "Counsellor profile not found" });
     }
 
-    await counsellor.update({ profile_image: relativePath });
+    await db.db.Counsellor.update({ profile_image: relativePath });
 
     const fullUrl = `${req.protocol}://${req.get("host")}/${relativePath}`;
     return res.status(200).json({
@@ -41,9 +41,9 @@ export const uploadProfileImage = async (req, res) => {
 
 export const getCounsellorProfile = async (req, res) => {
   try {
-    const counsellor = await Counsellor.findOne({
+    const counsellor = await db.db.Counsellor.findOne({
       where: {
-        user_id: req.user.id,
+        user_id: req.db.db.User.id,
         is_deleted: false,
       },
       attributes: { exclude: ["id", "user_id", "is_deleted"] },
@@ -53,9 +53,9 @@ export const getCounsellorProfile = async (req, res) => {
       return res.status(404).json({ message: "Counsellor profile not found" });
     }
 
-    const response = counsellor.toJSON();
-    response.createdAt = counsellor.createdAt;
-    response.updatedAt = counsellor.updatedAt;
+    const response = db.db.Counsellor.toJSON();
+    response.createdAt = db.db.Counsellor.createdAt;
+    response.updatedAt = db.db.Counsellor.updatedAt;
 
     if (response.profile_image) {
       response.profilePictureUrl = `${req.protocol}://${req.get("host")}/${response.profile_image}`;
@@ -75,8 +75,8 @@ export const updateCounsellorProfile = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const counsellor = await Counsellor.findOne({
-      where: { user_id: req.user.id, is_deleted: false },
+    const counsellor = await db.db.Counsellor.findOne({
+      where: { user_id: req.db.db.User.id, is_deleted: false },
       transaction,
     });
 
@@ -92,11 +92,11 @@ export const updateCounsellorProfile = async (req, res) => {
     if (cnic !== undefined) counsellorUpdate.cnic = normalizedCNIC;
     if (address !== undefined) counsellorUpdate.address = address;
 
-    if (phone && phone !== counsellor.phone) {
-      const existingPhone = await Counsellor.findOne({
+    if (phone && phone !== db.db.Counsellor.phone) {
+      const existingPhone = await db.db.Counsellor.findOne({
         where: {
           phone,
-          user_id: { [Op.ne]: req.user.id },
+          user_id: { [Op.ne]: req.db.db.User.id },
           is_deleted: false,
         },
         transaction,
@@ -109,11 +109,11 @@ export const updateCounsellorProfile = async (req, res) => {
       }
     }
 
-    if (cnic && normalizedCNIC !== counsellor.cnic) {
-      const existingCNIC = await Counsellor.findOne({
+    if (cnic && normalizedCNIC !== db.db.Counsellor.cnic) {
+      const existingCNIC = await db.db.Counsellor.findOne({
         where: {
           cnic: normalizedCNIC,
-          user_id: { [Op.ne]: req.user.id },
+          user_id: { [Op.ne]: req.db.db.User.id },
           is_deleted: false,
         },
         transaction,
@@ -124,16 +124,16 @@ export const updateCounsellorProfile = async (req, res) => {
       }
     }
 
-    await counsellor.update(counsellorUpdate, { transaction });
+    await db.db.Counsellor.update(counsellorUpdate, { transaction });
 
-    const user = await User.findByPk(req.user.id, { transaction });
+    const user = await db.db.User.findByPk(req.db.db.User.id, { transaction });
     if (user && name !== undefined) {
-      await user.update({ name }, { transaction });
+      await db.db.User.update({ name }, { transaction });
     }
 
     await transaction.commit();
 
-    const updatedProfile = counsellor.toJSON();
+    const updatedProfile = db.db.Counsellor.toJSON();
     delete updatedProfile.id;
     delete updatedProfile.user_id;
     delete updatedProfile.is_deleted;

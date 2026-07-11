@@ -1,7 +1,8 @@
+// src/controllers/counsellor/application.controller.js
 import db from "../../models/mysql/index.js";
 import { logActivity } from "../../services/activityLog.service.js";
 import { Op } from "sequelize";
-import sequelize from "../../config/db.js";
+import rawDb from "../../config/db.js";
 import sseManager from "../../utils/sseManager.js";
 import {
   sendApplicationInquiryEmail,
@@ -18,7 +19,7 @@ import {
 const { Application, Lead, User, Document, AccountTransaction } = db;
 import { storeNotification } from "../../utils/notificationHelper.js";
 
-// ---------- Helper functions (added for the new feature) ----------
+// ---------- Helper functions ----------
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -26,11 +27,6 @@ const formatCurrency = (amount) => {
   }).format(amount);
 };
 
-/**
- * Retrieve student details and application reference for a given application ID.
- * @param {number} applicationId
- * @returns {Promise<{studentName: string, appReference: string, userId: number}>}
- */
 async function getStudentAndAppDetails(applicationId) {
   const application = await Application.findByPk(applicationId, {
     include: [
@@ -50,11 +46,19 @@ async function getStudentAndAppDetails(applicationId) {
   }
   return {
     studentName: student.name || "Student",
-    appReference: application.id.toString(), // use ID as reference; can be customised if a reference field exists
+    appReference: application.id.toString(),
     userId: student.id,
   };
 }
-// ----------------------------------------------------------------
+
+async function getConfigNameById(id, type) {
+  if (!id) return '';
+  const [result] = await rawDb.query(
+    'SELECT name FROM config_values WHERE id = ? AND type = ?',
+    [id, type]
+  );
+  return result?.name || '';
+}
 
 const sendStatusUpdateEmail = async (
   application,
@@ -72,90 +76,43 @@ const sendStatusUpdateEmail = async (
       );
       return;
     }
+const universityRow = await db.University.findByPk(application.university_id, {
+      attributes: ["name"],
+    });
+    const courseNameResolved = await getConfigNameById(application.course_id, "course");
 
     const name = student.name || "Student";
     const email = student.email;
-    const university = application.target_university || "the university";
-    const course = application.course || "your course";
+    const university = universityRow?.name || "the university";
+    const course = courseNameResolved || "your course";
     const appId = application.id;
+   
 
     switch (newStatus) {
       case "inquiry":
-        await sendApplicationInquiryEmail({
-          name,
-          email,
-          university,
-          course,
-          applicationId: appId,
-        });
+        await sendApplicationInquiryEmail({ name, email, university, course, applicationId: appId });
         break;
       case "evaluation":
-        await sendApplicationEvaluationEmail({
-          name,
-          email,
-          university,
-          course,
-          applicationId: appId,
-        });
+        await sendApplicationEvaluationEmail({ name, email, university, course, applicationId: appId });
         break;
       case "application submitted":
-        await sendApplicationSubmittedEmail({
-          name,
-          email,
-          university,
-          course,
-          applicationId: appId,
-        });
+        await sendApplicationSubmittedEmail({ name, email, university, course, applicationId: appId });
         break;
       case "offer letter received":
-        await sendOfferReceivedEmail({
-          name,
-          email,
-          university,
-          course,
-          applicationId: appId,
-        });
+        await sendOfferReceivedEmail({ name, email, university, course, applicationId: appId });
         break;
       case "offer letter not received":
-        await sendOfferNotReceivedEmail({
-          name,
-          email,
-          university,
-          course,
-          applicationId: appId,
-        });
+        await sendOfferNotReceivedEmail({ name, email, university, course, applicationId: appId });
         break;
       case "visa filed":
-        await sendVisaFiledEmail({
-          name,
-          email,
-          university,
-          course,
-          applicationId: appId,
-          visaCenter: null,
-        });
+        await sendVisaFiledEmail({ name, email, university, course, applicationId: appId, visaCenter: null });
         break;
       case "approved":
-        await sendVisaApprovedEmail({
-          name,
-          email,
-          university,
-          course,
-          applicationId: appId,
-        });
+        await sendVisaApprovedEmail({ name, email, university, course, applicationId: appId });
         break;
       case "reject":
-        const reason =
-          application.counselor_notes ||
-          "The application did not meet the requirements.";
-        await sendApplicationRejectedEmail({
-          name,
-          email,
-          university,
-          course,
-          applicationId: appId,
-          reason,
-        });
+        const reason = application.counselor_notes || "The application did not meet the requirements.";
+        await sendApplicationRejectedEmail({ name, email, university, course, applicationId: appId, reason });
         break;
       default:
         console.log(`No email template defined for status: ${newStatus}`);
@@ -163,137 +120,285 @@ const sendStatusUpdateEmail = async (
     }
     console.log(`✅ Status email sent for ${newStatus} to ${email}`);
   } catch (err) {
-    console.error(
-      `❌ Failed to send status email for status ${newStatus}:`,
-      err.message,
-    );
+    console.error(`❌ Failed to send status email for status ${newStatus}:`, err.message);
   }
 };
 
+// ✅ getStudentsWithApplications - Using correct table names from your DB
 export const getStudentsWithApplications = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const userRole = req.user.role;
-    const isAdmin = userRole === "admin";
-    const { start, end } = req.query;
+    const isAdmin = req.user.role === "admin";
+    let counsellorId = null;
 
-    let leadWhere = { is_deleted: false };
     if (!isAdmin) {
-      leadWhere.counsellor_id = userId;
+      const [counsellorRows] = await rawDb.query(
+        'SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0',
+        [req.user.id]
+      );
+
+      if (!counsellorRows || counsellorRows.length === 0) {
+        return res.json({
+          success: true,
+          students: [],
+          count: 0,
+          message: "No counsellor record found for this user"
+        });
+      }
+
+      counsellorId = counsellorRows[0].id;
     }
 
-    if (start && end) {
-      leadWhere.created_at = {
-        [Op.between]: [new Date(start), new Date(end)],
+    console.log(
+      isAdmin
+        ? "📊 Fetching students for ADMIN (all)"
+        : `📊 Fetching students for counsellor: ${counsellorId}`
+    );
+
+    const baseQuery = `
+      SELECT 
+        l.id,
+        l.user_id,
+        l.name,
+        l.email,
+        l.phone,
+        l.status,
+        l.dob,
+        l.father_name,
+        l.father_contact,
+        l.home_address,
+        l.preferred_country,
+        l.english_test_id,
+        l.english_test_overall_score,
+        l.created_at,
+        COALESCE(
+          JSON_ARRAYAGG(
+            JSON_OBJECT(
+              'id', a.id,
+              'lead_id', a.lead_id,
+              'country_id', a.country_id,
+              'city_id', a.city_id,
+              'university_id', a.university_id,
+              'course_id', a.course_id,
+              'target_university', u.name,
+              'course', cv.name,
+              'target_country', c.name,
+              'deadline', a.deadline,
+              'status', a.status,
+              'consultancy_fee', a.consultancy_fee,
+              'created_at', a.created_at,
+              'documents', (
+                SELECT COALESCE(
+                  JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                      'id', d.id,
+                      'doc_type_id', d.doc_value,
+                      'doc_type_name', dcv.name,
+                      'is_collective', d.is_collective,
+                      'collective_doc_ids', d.collective_doc_ids,
+                      'file_path', d.file_path,
+                      'file_url', d.file_path,
+                      'original_name', d.file_path,
+                      'status', d.status,
+                      'submitted_at', d.created_at,
+                      'created_at', d.created_at,
+                      'reviewed_at', d.reviewed_at,
+                      'rejection_reason', d.rejection_reason,
+                      'notes', d.notes,
+                      'uploaded_by', d.uploaded_by,
+                      'uploaded_by_id', d.uploaded_by_id
+                    )
+                  ), JSON_ARRAY()
+                ) FROM student_documents d 
+                LEFT JOIN config_values dcv ON d.doc_value = dcv.id
+                WHERE d.application_id = a.id AND d.is_deleted = 0
+              )
+            )
+          ), JSON_ARRAY()
+        ) as applications
+      FROM leads l
+      LEFT JOIN applications a ON l.id = a.lead_id AND a.is_deleted = 0
+      LEFT JOIN universities u ON a.university_id = u.id
+      LEFT JOIN countries c ON a.country_id = c.id
+      LEFT JOIN config_values cv ON a.course_id = cv.id
+      WHERE l.is_deleted = 0 
+        AND l.user_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM applications a2 
+          WHERE a2.lead_id = l.id 
+          AND a2.is_deleted = 0
+        )
+        ${isAdmin ? '' : 'AND l.counsellor_id = ?'}
+      GROUP BY l.id
+      ORDER BY l.created_at DESC
+    `;
+
+    const queryParams = isAdmin ? [] : [counsellorId];
+    const [results] = await rawDb.query(baseQuery, queryParams);
+
+    console.log("📊 Found students:", results?.length || 0);
+
+    if (!results || results.length === 0) {
+      return res.json({
+        success: true,
+        students: [],
+        count: 0,
+        message: isAdmin ? "No students found" : "No students found for this counsellor"
+      });
+    }
+
+    const students = results.map(student => {
+      let applications = [];
+      
+      if (student.applications) {
+        if (typeof student.applications === 'string') {
+          try {
+            applications = JSON.parse(student.applications);
+          } catch (e) {
+            console.error("Error parsing applications:", e);
+            applications = [];
+          }
+        } else if (Array.isArray(student.applications)) {
+          applications = student.applications;
+        }
+        applications = applications.filter(app => app && app.id);
+      }
+
+      return {
+        id: student.id,
+        user_id: student.user_id || student.id,
+        name: student.name || 'Unnamed Student',
+        email: student.email || '',
+        phone: student.phone || '',
+        status: student.status || 'new',
+        dob: student.dob || null,
+        father_name: student.father_name || '',
+        father_contact: student.father_contact || '',
+        home_address: student.home_address || '',
+        preferred_country: student.preferred_country || '',
+        english_test_id: student.english_test_id || null,
+        english_proficiency_test: student.english_test_id || '',
+        english_test_overall_score: student.english_test_overall_score || '',
+        created_at: student.created_at,
+        applications: applications
       };
-    }
-
-    const leads = await Lead.findAll({
-      where: leadWhere,
-      attributes: [
-        "id",
-        "name",
-        "email",
-        "phone",
-        "status",
-        "created_at",
-        "study_level",
-        "grades_cgpa",
-        "english_proficiency_test",
-        "english_test_overall_score",
-      ],
-      include: [
-        {
-          model: Application,
-          as: "applications",
-          required: false,
-          include: [
-            {
-              model: Document,
-              as: "documents",
-              required: false,
-              where: { is_deleted: false },
-            },
-          ],
-        },
-      ],
-      order: [["created_at", "DESC"]],
     });
 
-    const formattedStudents = leads.map((lead) => ({
-      id: lead.id,
-      user_id: lead.user_id,
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone,
-      status: lead.status,
-      study_level: lead.study_level || "",
-      grades_cgpa: lead.grades_cgpa || "",
-      english_proficiency_test: lead.english_proficiency_test || "",
-      english_test_overall_score: lead.english_test_overall_score || "",
+    console.log("✅ Returning", students.length, "students with applications");
 
-      applications: lead.applications?.map((app) => ({
-        id: app.id,
-        target_university: app.target_university,
-        course: app.course,
-        target_country: app.target_country,
-        deadline: app.deadline,
-        status: app.status,
-        full_name: app.full_name,
-        email: app.email,
-        phone: app.phone,
-        study_level: app.study_level,
-        grades_cgpa: app.grades_cgpa,
-        english_proficiency_test: app.english_proficiency_test,
-        english_test_overall_score: app.english_test_overall_score,
-        year_awarded: app.year_awarded,
-        board_university: app.board_university,
-        counselor_notes: app.counselor_notes,
-        consultancy_fee: app.consultancy_fee,
-        created_at: app.created_at,
-        student_id: lead.id,
-        user_id: lead.user_id,
-        student_name: lead.name,
-        student_email: lead.email,
-        documents: app.documents || [],
-      })),
-    }));
+    res.json({
+      success: true,
+      students: students,
+      count: students.length
+    });
 
-    res.json({ success: true, students: formattedStudents });
-  } catch (err) {
-    console.error("Error in getStudentsWithApplications:", err);
+  } catch (error) {
+    console.error("Error fetching students with applications:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching students applications",
+      message: "Failed to fetch students",
+      error: error.message
+    });
+  }
+};
+export const getLeadEducation = async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        
+        // Get education for this lead
+        const [education] = await rawDb.query(
+            'SELECT * FROM lead_educations WHERE lead_id = ?',
+            [leadId]
+        );
+        
+        res.json({
+            success: true,
+            education: education || []
+        });
+    } catch (error) {
+        console.error("Error fetching education:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch education"
+        });
+    }
+};
+
+// ✅ getAssignedStudents - Using correct table names
+export const getAssignedStudents = async (req, res) => {
+  try {
+    const [counsellorRows] = await rawDb.query(
+      'SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0',
+      [req.user.id]
+    );
+
+    if (!counsellorRows || counsellorRows.length === 0) {
+      return res.json({
+        success: true,
+        students: [],
+        count: 0
+      });
+    }
+
+    const counsellorId = counsellorRows[0].id;
+
+  const [students] = await rawDb.query(
+      `SELECT 
+        l.id, 
+        l.user_id,
+        l.name, 
+        l.email, 
+        l.phone,
+        l.dob,
+        l.father_name,
+        l.father_contact,
+        l.home_address,
+        l.preferred_country,
+        l.status,
+        l.english_test_id,
+        l.english_test_overall_score,
+        l.created_at
+       FROM leads l
+       WHERE l.counsellor_id = ? AND l.is_deleted = 0
+       ORDER BY l.created_at DESC`,
+      [counsellorId]
+    );
+
+    const formattedStudents = students.map((s) => ({
+      ...s,
+      english_proficiency_test: s.english_test_id || '',
+    }));
+
+    res.json({
+      success: true,
+      students: formattedStudents,
+    });
+  } catch (err) {
+    console.error("Error fetching assigned students:", err);
+    res.status(500).json({ 
+      success: false,
+      message: "Error fetching assigned students", 
+      error: err.message 
     });
   }
 };
 
+// ✅ getStudentApplications
 export const getStudentApplications = async (req, res) => {
   try {
     const { studentId } = req.params;
 
     const applications = await Application.findAll({
-      where: { user_id: studentId },
+      where: { lead_id: studentId },
       order: [["created_at", "DESC"]],
     });
 
     const formattedApplications = applications.map((app) => ({
       id: app.id,
       _id: app.id,
-      full_name: app.full_name,
-      email: app.email,
-      phone: app.phone,
-      cnic: app.cnic,
-      study_level: app.study_level,
-      grades_cgpa: app.grades_cgpa,
-      year_awarded: app.year_awarded,
-      board_university: app.board_university,
-      english_proficiency_test: app.english_proficiency_test,
-      english_test_overall_score: app.english_test_overall_score,
       target_university: app.target_university,
       course: app.course,
       target_country: app.target_country,
+      deadline: app.deadline,
       status: app.status,
       counselor_notes: app.counselor_notes,
       consultancy_fee: app.consultancy_fee,
@@ -314,36 +419,7 @@ export const getStudentApplications = async (req, res) => {
   }
 };
 
-export const getAssignedStudents = async (req, res) => {
-  try {
-    const students = await Lead.findAll({
-      where: {
-        counsellor_id: req.user.id,
-        is_deleted: false,
-      },
-      attributes: [
-        "id",
-        "name",
-        "email",
-        "phone",
-        "created_at",
-        "study_level",
-        "grades_cgpa",
-        "english_proficiency_test",
-        "english_test_overall_score",
-      ],
-    });
-
-    res.json({
-      success: true,
-      students,
-    });
-  } catch (err) {
-    console.error("Error fetching assigned students:", err);
-    res.status(500).json({ message: "Error fetching assigned students" });
-  }
-};
-
+// ✅ createApplication - Fixed with correct fields
 export const createApplication = async (req, res) => {
   try {
     const { user_id, consultancy_fee, ...applicationData } = req.body;
@@ -383,7 +459,6 @@ export const createApplication = async (req, res) => {
       });
     }
 
-    // Validate consultancy fee
     if (
       consultancy_fee === undefined ||
       consultancy_fee === null ||
@@ -401,15 +476,29 @@ export const createApplication = async (req, res) => {
         message: "Consultancy fee must be a positive number.",
       });
     }
+  console.log("🔍 counsellor check:", {
+      lead_counsellor_id: lead.counsellor_id,
+      lead_counsellor_id_type: typeof lead.counsellor_id,
+      req_user_id: counsellorId,
+      req_user_id_type: typeof counsellorId,
+      strictEqual: lead.counsellor_id === counsellorId,
+    });
+if (!isAdmin) {
+      // Resolve the counsellor's own record ID from their logged-in user ID
+      const [counsellorRows] = await rawDb.query(
+        "SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0 LIMIT 1",
+        [counsellorId]
+      );
+      const counsellorRecordId = counsellorRows?.[0]?.id;
 
-    if (!isAdmin) {
-      const allowedLeadStatuses = ["new", "contacted", "counseling"];
-      if (lead.counsellor_id !== counsellorId) {
+      if (!counsellorRecordId || lead.counsellor_id !== counsellorRecordId) {
         return res
           .status(403)
           .json({ success: false, message: "Student not assigned to you" });
       }
-      if (!allowedLeadStatuses.includes(lead.status)) {
+
+      const blockedLeadStatuses = ["new", "contacted"];
+      if (blockedLeadStatuses.includes(lead.status)) {
         return res.status(400).json({
           success: false,
           message: `Lead status "${lead.status}" not allowed for creating an application`,
@@ -417,28 +506,24 @@ export const createApplication = async (req, res) => {
       }
     }
 
-    // Create application
     const application = await Application.create({
+      lead_id: lead.id,
       user_id: lead.user_id,
-      full_name: applicationData.full_name || lead.name,
-      email: applicationData.email || lead.email,
-      phone: applicationData.phone || lead.phone,
-      target_university: applicationData.target_university,
-      course: applicationData.course,
-      target_country: applicationData.target_country,
-      deadline: applicationData.deadline,
+      country_id: parseInt(req.body.country_id),
+      city_id: parseInt(req.body.city_id),
+      university_id: parseInt(req.body.university_id),
+      course_id: parseInt(req.body.course_id),
+      deadline: applicationData.deadline || null,
       status: applicationData.status || "inquiry",
-      study_level: applicationData.study_level,
-      grades_cgpa: applicationData.grades_cgpa,
-      english_proficiency_test: applicationData.english_proficiency_test,
-      english_test_overall_score: applicationData.english_test_overall_score,
-      year_awarded: applicationData.year_awarded,
-      board_university: applicationData.board_university,
-      counselor_notes: applicationData.counselor_notes,
+      counsellor_notes: applicationData.counsellor_notes || null,
       consultancy_fee: feeNum,
     });
-
-    // ✅ Create account transaction
+const universityRow = await db.University.findByPk(application.university_id, {
+      attributes: ["name"],
+    });
+    const courseNameResolved = await getConfigNameById(application.course_id, "course");
+    const universityName = universityRow?.name || "N/A";
+    const finalCourseName = courseNameResolved || "N/A";
     await AccountTransaction.create({
       invoice_no: `FEE-${application.id}`,
       user_id: application.user_id,
@@ -450,9 +535,7 @@ export const createApplication = async (req, res) => {
       description: "Initial consultancy fee",
     });
 
-    // --------------------------------------------------------------
-    // Store notification for student about consultancy fee added
-    // --------------------------------------------------------------
+    // Notification logic...
     (async () => {
       try {
         const { studentName, appReference, userId } =
@@ -471,7 +554,6 @@ export const createApplication = async (req, res) => {
           transactionDate: transactionDate,
         });
 
-        // Send SSE to student
         sseManager.sendToUser(userId, {
           type: "consultancy_fee_added",
           message,
@@ -488,9 +570,8 @@ export const createApplication = async (req, res) => {
         );
       }
     })();
-    // --------------------------------------------------------------
 
-    // ✅ Send email notification for the initial fee debit (non-blocking)
+    // Email notification
     (async () => {
       try {
         const student = await db.User.findByPk(lead.user_id, {
@@ -499,9 +580,8 @@ export const createApplication = async (req, res) => {
         const studentName = student?.name || lead.name;
         const studentEmail = student?.email || lead.email;
 
-        const applicationDetails = `${application.target_university} (${application.course})`;
+      const applicationDetails = `${universityName} (${finalCourseName})`;
 
-        // Fetch the created transaction to get invoice number
         const createdTx = await db.AccountTransaction.findOne({
           where: { application_id: application.id, debit: feeNum },
           order: [["id", "DESC"]],
@@ -514,7 +594,7 @@ export const createApplication = async (req, res) => {
             applicationDetails,
             invoiceNumber: createdTx.invoice_no,
             debitedAmount: feeNum,
-            outstandingBalance: feeNum, // initial balance after debit
+            outstandingBalance: feeNum,
             transactionDate: new Date(),
             description: "Initial consultancy fee",
           });
@@ -524,13 +604,12 @@ export const createApplication = async (req, res) => {
       }
     })();
 
-    // Send status email and notifications
     await sendStatusUpdateEmail(application, "inquiry");
 
     await logActivity({
       leadId: lead.id,
       actionType: "application_created",
-      note: `Application created for ${lead.name} → ${applicationData.target_university || "—"} (${applicationData.course || "—"})`,
+note: `Application created for ${lead.name} → ${universityName} (${finalCourseName})`,
       performedBy: counsellorId,
       performedByRole: req.user.role,
       performedByName: req.user.name,
@@ -543,22 +622,21 @@ export const createApplication = async (req, res) => {
       sseManager.sendToUser(student.id, {
         type: "application_created",
         applicationId: application.id,
-        message: `New application created for ${application.target_university} (${application.course}).`,
+  message: `New application created for ${universityName} (${finalCourseName}).`,
         timestamp: new Date().toISOString(),
       });
 
       await storeNotification(
         student.id,
         "application_created",
-        `New application created for ${application.target_university} (${application.course}).`,
+        `New application created for ${universityName} (${finalCourseName}).`,
         {
           applicationId: application.id,
-          university: application.target_university,
-          course: application.course,
+          university: universityName,
+          course: finalCourseName,
           created_at: new Date().toISOString(),
         },
       );
-
       const admins = await User.findAll({
         where: { role: "admin" },
         attributes: ["id"],
@@ -567,16 +645,16 @@ export const createApplication = async (req, res) => {
       for (const admin of admins) {
         await storeNotification(
           admin.id,
-          "counsellor_added_application",
-          `${req.user.name} added an application for student ${lead.name} to ${application.target_university} (${application.course}).`,
+     "counsellor_added_application",
+          `${req.user.name} added an application for student ${lead.name} to ${universityName} (${finalCourseName}).`,
           {
             applicationId: application.id,
             counsellorId: req.user.id,
             counsellorName: req.user.name,
             studentId: lead.id,
             studentName: lead.name,
-            university: application.target_university,
-            course: application.course,
+            university: universityName,
+            course: finalCourseName,
           },
         );
       }
@@ -598,137 +676,219 @@ export const createApplication = async (req, res) => {
   }
 };
 
+// ✅ updateApplication
+// ✅ updateApplication - Using rawDb
+// ✅ updateApplication - Full update with all fields
 export const updateApplication = async (req, res) => {
   try {
     const { id } = req.params;
+    console.log("🔍 UPDATE APPLICATION ID:", id);
+    console.log("🔍 REQUEST BODY:", req.body);
     const isAdmin = req.user?.role === "admin";
-    const application = await Application.findByPk(id);
-    if (!application) {
-      return res.status(404).json({ message: "Application not found" });
-    }
+    const {
+      user_id,
+      country_id,
+      city_id,
+      university_id,
+      course_id,
+      deadline,
+      status,
+      counsellor_notes,
+      consultancy_fee,
+    } = req.body;
 
-    const { consultancy_fee, ...updateData } = req.body;
+    // Check if application exists
+    const [appRows] = await rawDb.query(
+      'SELECT * FROM applications WHERE id = ? AND is_deleted = 0',
+      [id]
+    );
 
-    if (
-      consultancy_fee !== undefined &&
-      consultancy_fee !== null &&
-      consultancy_fee !== ""
-    ) {
-      const feeNum = parseFloat(consultancy_fee);
-      if (isNaN(feeNum) || feeNum < 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Consultancy fee must be a positive number.",
-        });
-      }
-      updateData.consultancy_fee = feeNum;
-    }
-
-    delete updateData.user_id;
-
-    if (!isAdmin) {
-      const lead = await Lead.findOne({
-        where: { user_id: application.user_id, counsellor_id: req.user.id },
+    if (!appRows || appRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found"
       });
-      if (!lead) {
-        return res
-          .status(403)
-          .json({ message: "Access denied - Application not yours" });
-      }
     }
+
+    const application = appRows[0];
+
+    // Check permissions
+ // Check permissions
+if (!isAdmin) {
+  const [counsellorRows] = await rawDb.query(
+    "SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0 LIMIT 1",
+    [req.user.id]
+  );
+  const counsellorRecordId = counsellorRows?.[0]?.id;
+
+  const [leadRows] = await rawDb.query(
+    'SELECT * FROM leads WHERE user_id = ? AND counsellor_id = ? AND is_deleted = 0',
+    [application.user_id, counsellorRecordId]
+  );
+
+  if (!counsellorRecordId || !leadRows || leadRows.length === 0) {
+    return res.status(403).json({
+      success: false,
+      message: "Access denied - Application not yours"
+    });
+  }
+}
 
     const oldStatus = application.status;
-    const oldUniversity = application.target_university;
-    const oldCourse = application.course;
 
-    await application.update(updateData);
+    // ✅ UPDATE ALL FIELDS
+// ✅ UPDATE ALL FIELDS — preserve existing value if field not sent
+    await rawDb.query(
+      `UPDATE applications SET 
+        country_id = ?,
+        city_id = ?,
+        university_id = ?,
+        course_id = ?,
+        deadline = ?,
+        status = ?,
+        counsellor_notes = ?,
+        consultancy_fee = ?,
+        updated_at = NOW()
+      WHERE id = ?`,
+      [
+        country_id ?? application.country_id,
+        city_id ?? application.city_id,
+        university_id ?? application.university_id,
+        course_id ?? application.course_id,
+        deadline ?? application.deadline,
+        status ?? application.status,
+        counsellor_notes ?? application.counsellor_notes,
+        consultancy_fee ?? application.consultancy_fee,
+        id
+      ]
+    );
 
-    if (req.body.status && req.body.status !== oldStatus) {
-      await sendStatusUpdateEmail(application, req.body.status, oldStatus);
+    // Get updated application
+    const [updatedAppRows] = await rawDb.query(
+      'SELECT * FROM applications WHERE id = ?',
+      [id]
+    );
+    const updatedApplication = updatedAppRows[0];
+
+    // Send email if status changed
+    if (status && status !== oldStatus) {
+      await sendStatusUpdateEmail(updatedApplication, status, oldStatus);
     }
 
-    const lead = await Lead.findOne({
-      where: { user_id: application.user_id },
-    });
-    await logActivity({
-      leadId: lead.id,
-      actionType: "application_updated",
-      note: `Application updated for ${application.target_university}`,
-      performedBy: req.user.id,
-      performedByRole: req.user.role,
-      performedByName: req.user.name,
-    });
-
-    const student = await User.findByPk(application.user_id, {
-      attributes: ["id", "name", "email"],
-    });
-
-    const getAppIdentifier = (app) => {
-      if (app.target_university && app.course)
-        return `${app.target_university} (${app.course})`;
-      if (app.target_university) return app.target_university;
-      if (app.course) return app.course;
-      return `Application #${app.id}`;
-    };
-
-    let message = `Your application (${getAppIdentifier(application)}) was updated.`;
-
-    if (
-      req.body.target_university &&
-      req.body.target_university !== oldUniversity
-    ) {
-      message = `University for ${getAppIdentifier(application)} changed to ${req.body.target_university}.`;
-    } else if (req.body.course && req.body.course !== oldCourse) {
-      message = `Course for ${getAppIdentifier(application)} changed to ${req.body.course}.`;
-    } else if (req.body.status && req.body.status !== oldStatus) {
-      const statusDisplayMap = {
-        inquiry: "Inquiry",
-        evaluation: "Evaluation",
-        "application submitted": "Application Submitted",
-        "offer letter received": "Offer Letter Received",
-        "offer letter not received": "Offer Letter Not Received",
-        "visa filed": "Visa Filed",
-        approved: "Approved",
-        reject: "Rejected",
-      };
-      const newStatusLabel =
-        statusDisplayMap[req.body.status] || req.body.status;
-      message = `Status of ${getAppIdentifier(application)} changed to ${newStatusLabel}.`;
-    }
-
-    if (student && student.id) {
-      sseManager.sendToUser(student.id, {
-        type: "application_updated",
-        applicationId: application.id,
-        message,
-        timestamp: new Date().toISOString(),
-      });
-
-      await storeNotification(student.id, "application_updated", message, {
-        applicationId: application.id,
-        oldUniversity,
-        newUniversity: req.body.target_university,
-        oldCourse,
-        newCourse: req.body.course,
-        oldStatus,
-        newStatus: req.body.status,
-        updatedBy: req.user.name,
+    // Log activity
+    const [leadRows] = await rawDb.query(
+      'SELECT * FROM leads WHERE user_id = ?',
+      [application.user_id]
+    );
+    
+    if (leadRows && leadRows.length > 0) {
+      await logActivity({
+        leadId: leadRows[0].id,
+        actionType: "application_updated",
+        note: `Application updated from ${oldStatus} to ${status}`,
+        performedBy: req.user.id,
+        performedByRole: req.user.role,
+        performedByName: req.user.name,
       });
     }
 
     res.json({
       success: true,
       message: "Application updated successfully",
-      data: application,
+      data: updatedApplication,
     });
   } catch (err) {
     console.error("Error updating application:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ message: "Error updating application" });
+    res.status(500).json({
+      success: false,
+      message: "Error updating application",
+      error: err.message
+    });
+  }
+};
+// ✅ UPDATE ONLY STATUS - For ApplicationStatusModal
+export const updateApplicationStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const isAdmin = req.user?.role === "admin";
+
+    // Check if application exists
+    const [appRows] = await rawDb.query(
+      'SELECT * FROM applications WHERE id = ? AND is_deleted = 0',
+      [id]
+    );
+
+    if (!appRows || appRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found"
+      });
     }
+
+    const application = appRows[0];
+
+    // Check permissions
+// Check permissions
+if (!isAdmin) {
+  const [counsellorRows] = await rawDb.query(
+    "SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0 LIMIT 1",
+    [req.user.id]
+  );
+  const counsellorRecordId = counsellorRows?.[0]?.id;
+
+  const [leadRows] = await rawDb.query(
+    'SELECT * FROM leads WHERE user_id = ? AND counsellor_id = ? AND is_deleted = 0',
+    [application.user_id, counsellorRecordId]
+  );
+
+  if (!counsellorRecordId || !leadRows || leadRows.length === 0) {
+    return res.status(403).json({
+      success: false,
+      message: "Access denied - Application not yours"
+    });
+  }
+}
+
+    const oldStatus = application.status;
+
+    // ✅ UPDATE ONLY STATUS
+    await rawDb.query(
+      'UPDATE applications SET status = ?, updated_at = NOW() WHERE id = ?',
+      [status, id]
+    );
+
+    // Get updated application
+    const [updatedAppRows] = await rawDb.query(
+      'SELECT * FROM applications WHERE id = ?',
+      [id]
+    );
+    const updatedApplication = updatedAppRows[0];
+
+    // Send email if status changed
+    if (status && status !== oldStatus) {
+      await sendStatusUpdateEmail(updatedApplication, status, oldStatus);
+    }
+
+    res.json({
+      success: true,
+      message: "Application status updated successfully",
+      data: updatedApplication,
+    });
+  } catch (err) {
+    console.error("Error updating application status:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error updating application status",
+      error: err.message
+    });
   }
 };
 
+// ✅ UPDATE ALL FIELDS - For EditApplicationModal
+
+
+// ✅ deleteApplication
 export const deleteApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -736,10 +896,21 @@ export const deleteApplication = async (req, res) => {
     const application = await Application.findByPk(id);
     if (!application)
       return res.status(404).json({ message: "Application not found" });
-
+ const universityRow = await db.University.findByPk(application.university_id, {
+      attributes: ["name"],
+    });
+    const courseNameResolved = await getConfigNameById(application.course_id, "course");
+    const universityName = universityRow?.name || "N/A";
+    const finalCourseName = courseNameResolved || "N/A";
     if (!isAdmin) {
+      const [counsellorRows] = await rawDb.query(
+        "SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0 LIMIT 1",
+        [req.user.id]
+      );
+      const counsellorRecordId = counsellorRows?.[0]?.id;
+
       const lead = await Lead.findOne({
-        where: { id: application.user_id, counsellor_id: req.user.id },
+        where: { user_id: application.user_id, counsellor_id: counsellorRecordId },
       });
       if (!lead) return res.status(403).json({ message: "Access denied" });
     }
@@ -747,22 +918,23 @@ export const deleteApplication = async (req, res) => {
     const student = await User.findByPk(application.user_id, {
       attributes: ["id", "name", "email"],
     });
+  
     if (student && student.id) {
       sseManager.sendToUser(student.id, {
         type: "application_deleted",
         applicationId: application.id,
-        message: `Your application for ${application.target_university} (${application.course}) has been deleted.`,
+message: `Your application for ${universityName} (${finalCourseName}) has been deleted.`,
         timestamp: new Date().toISOString(),
       });
 
       await storeNotification(
         student.id,
         "application_deleted",
-        `Your application for ${application.target_university} (${application.course}) has been deleted.`,
+        `Your application for ${universityName} (${finalCourseName}) has been deleted.`,
         {
           applicationId: application.id,
-          university: application.target_university,
-          course: application.course,
+          university: universityName,
+          course: finalCourseName,
           deletedBy: req.user.name,
           deletedAt: new Date().toISOString(),
         },
@@ -781,7 +953,7 @@ export const deleteApplication = async (req, res) => {
     await logActivity({
       leadId: lead.id,
       actionType: "application_deleted",
-      note: `Application deleted for ${application.target_university}`,
+    note: `Application deleted for ${universityName}`,
       performedBy: req.user.id,
       performedByRole: req.user.role,
       performedByName: req.user.name,
@@ -799,6 +971,7 @@ export const deleteApplication = async (req, res) => {
   }
 };
 
+// ✅ updateApplicationStatusAsCounsellor
 export const updateApplicationStatusAsCounsellor = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -830,7 +1003,12 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
         message: "Application not found",
       });
     }
-
+ const universityRow = await db.University.findByPk(application.university_id, {
+      attributes: ["name"],
+    });
+    const courseNameResolved = await getConfigNameById(application.course_id, "course");
+    const universityName = universityRow?.name || "N/A";
+    const finalCourseName = courseNameResolved || "N/A";
     const oldStatus = application.status;
 
     if (status !== oldStatus) {
@@ -874,7 +1052,7 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
       reject: "Rejected",
     };
 
-    const notificationMessage = `Your application for ${application.target_university || "university"} (${application.course || "course"}) status changed from "${statusDisplayMap[oldStatus] || oldStatus}" to "${statusDisplayMap[status] || status}".`;
+   const notificationMessage = `Your application for ${universityName} (${finalCourseName}) status changed from "${statusDisplayMap[oldStatus] || oldStatus}" to "${statusDisplayMap[status] || status}".`;
 
     if (student && student.id) {
       sseManager.sendToUser(student.id, {
@@ -890,12 +1068,12 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
         student.id,
         "status_change",
         notificationMessage,
-        {
+     {
           applicationId: application.id,
           oldStatus,
           newStatus: status,
-          university: application.target_university,
-          course: application.course,
+          university: universityName,
+          course: finalCourseName,
           updatedBy: req.user.name,
           counselorNotes: counsellor_notes || null,
         },
@@ -932,12 +1110,13 @@ export const updateApplicationStatusAsCounsellor = async (req, res) => {
   }
 };
 
+// ✅ getApplicationStats
 export const getApplicationStats = async (req, res) => {
   try {
     const stats = await Application.findAll({
       attributes: [
         "status",
-        [sequelize.fn("COUNT", sequelize.col("status")), "count"],
+        [db.sequelize.fn("COUNT", db.sequelize.col("status")), "count"],
       ],
       group: ["status"],
     });

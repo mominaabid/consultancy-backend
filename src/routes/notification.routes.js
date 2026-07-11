@@ -1,75 +1,111 @@
-import express from "express";
-import authMiddleware from "../middleware/auth.middleware.js";
-import Notification from "../models/mysql/Notification.js";
+// src/routes/notification.routes.js
+import { Router } from "express";
+import db from "../models/mysql/index.js";
+import auth from "../middleware/auth.middleware.js";
 
-const router = express.Router();
+const router = Router();
 
 // GET /api/notifications?unread=true
-router.get("/", authMiddleware, async (req, res) => {
-  const userId = req.user.id;
-  const { unread } = req.query;
-
-  try {
-    const whereClause = { user_id: userId };
-    if (unread === "true") {
-      whereClause.is_read = false;
+router.get("/", auth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+     const unreadOnly = req.query.unread === 'true' || req.query.is_read === 'true';
+        
+        const where = { user_id: userId };
+        if (unreadOnly) {
+            where.is_read = 0;
+        }
+        
+        const notifications = await db.Notification.findAll({
+            where,
+            order: [['created_at', 'DESC']]
+        });
+        
+       res.json({ success: true, notifications });
+    } catch (error) {
+        console.error("Get notifications error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch notifications",
+            error: error.message
+        });
     }
-
-    const notifications = await Notification.findAll({
-      where: whereClause,
-      order: [["created_at", "DESC"]],
-    });
-
-    res.json({ success: true, notifications });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-});
-
-// PATCH /api/notifications/mark-all-read
-router.patch("/mark-all-read", authMiddleware, async (req, res) => {
-  const userId = req.user.id;
-
-  try {
-    await Notification.update(
-      { is_read: true },
-      { where: { user_id: userId, is_read: false } },
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
 });
 
 // PATCH /api/notifications/:id/read
-router.patch("/:id/read", authMiddleware, async (req, res) => {
-  const userId = req.user.id;
-  const { id } = req.params;
+router.patch("/:id/read", auth, async (req, res) => {
+    try {
+        const notificationId = req.params.id;
+        const userId = req.user.id;
+        
+        const updated = await db.Notification.update(
+            { is_read: 1 },
+            { where: { id: notificationId, user_id: userId } }
+        );
+        
+        if (updated === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Notification not found"
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: "Notification marked as read"
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Failed to mark as read",
+            error: error.message
+        });
+    }
+});
 
-  try {
-    await Notification.update(
-      { is_read: true },
-      { where: { id, user_id: userId } },
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
+// PATCH /api/notifications/mark-all-read
+router.patch("/mark-all-read", auth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        const updated = await db.Notification.update(
+            { is_read: 1 },
+            { where: { user_id: userId, is_read: 0 } }
+        );
+        
+        res.json({
+            success: true,
+            message: `${updated} notifications marked as read`
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Failed to mark all as read",
+            error: error.message
+        });
+    }
 });
 
 // DELETE /api/notifications
-router.delete("/", authMiddleware, async (req, res) => {
-  const userId = req.user.id;
-  try {
-    await Notification.destroy({ where: { user_id: userId } });
-    res.json({ success: true, message: "All notifications deleted" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
+router.delete("/", auth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        const deleted = await db.Notification.destroy({
+            where: { user_id: userId }
+        });
+        
+        res.json({
+            success: true,
+            message: `${deleted} notifications deleted`
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Failed to delete notifications",
+            error: error.message
+        });
+    }
 });
 
 export default router;

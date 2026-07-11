@@ -5,30 +5,60 @@ import { sendChatNotificationEmail } from "../services/email.service.js";
 import sseManager from "../utils/sseManager.js";
 import db from "../models/mysql/index.js";
 import { Op } from "sequelize";
-import { storeNotification } from "../utils/notificationHelper.js"; // <-- ADDED
+import { storeNotification } from "../utils/notificationHelper.js";
+import rawDb from "../config/db.js";
 
 const { Lead, User } = db;
 
+// Helper: Get counsellor ID from user ID
+async function getCounsellorId(userId) {
+  const [counsellorRecord] = await rawDb.query(
+    'SELECT id FROM counsellors WHERE user_id = ? AND is_deleted = 0',
+    [userId]
+  );
+  return counsellorRecord && counsellorRecord.length > 0 ? counsellorRecord[0].id : null;
+}
+
+// Helper: Get user ID from counsellor ID
+async function getUserIdFromCounsellorId(counsellorId) {
+  const [counsellorRecord] = await rawDb.query(
+    'SELECT user_id FROM counsellors WHERE id = ? AND is_deleted = 0',
+    [counsellorId]
+  );
+  return counsellorRecord && counsellorRecord.length > 0 ? counsellorRecord[0].user_id : null;
+}
+
 async function isConversationCurrentlyAssigned(conversation, userRole, userId) {
+  console.log(`🔍 Checking assignment - Role: ${userRole}, User: ${userId}`);
+  console.log(`🔍 Conversation - student: ${conversation.student_id}, counsellor: ${conversation.counsellor_id}`);
+  
   if (userRole === "student") {
-    // Find the lead belonging to this student (by user_id)
-    const lead = await Lead.findOne({
-      where: { user_id: userId, is_deleted: false },
-      attributes: ["counsellor_id"],
-    });
-    if (!lead) return false;
-    return lead.counsellor_id === conversation.counsellor_id;
-  } else if (userRole === "counsellor") {
-    // Find a lead where counsellor_id = userId and lead's user_id = conversation.student_id
-    const lead = await Lead.findOne({
-      where: {
-        counsellor_id: userId,
-        user_id: conversation.student_id,
-        is_deleted: false,
-      },
-      attributes: ["id"],
-    });
-    return !!lead;
+    const [lead] = await rawDb.query(
+      'SELECT counsellor_id FROM leads WHERE user_id = ? AND is_deleted = 0',
+      [userId]
+    );
+    console.log(`🔍 Student lead found:`, lead);
+    if (!lead || lead.length === 0) return false;
+    const isAssigned = lead[0].counsellor_id === conversation.counsellor_id;
+    console.log(`🔍 Is student assigned to this counsellor? ${isAssigned}`);
+    return isAssigned;
+  } 
+  else if (userRole === "counsellor") {
+    const counsellorId = await getCounsellorId(userId);
+    console.log(`🔍 Counsellor ID from table: ${counsellorId}, Conversation counsellor_id: ${conversation.counsellor_id}`);
+    
+    if (!counsellorId) return false;
+    if (conversation.counsellor_id !== counsellorId) {
+      console.log(`❌ Counsellor ID mismatch`);
+      return false;
+    }
+    
+    const [lead] = await rawDb.query(
+      'SELECT id FROM leads WHERE counsellor_id = ? AND user_id = ? AND is_deleted = 0',
+      [counsellorId, conversation.student_id]
+    );
+    console.log(`🔍 Lead found for this assignment:`, lead);
+    return lead && lead.length > 0;
   }
   return false;
 }
@@ -67,6 +97,9 @@ export async function sendMessage(req, res) {
     const { conversationId, content } = req.body;
     const user = req.user;
 
+    console.log(`📤 Sending message to conversation: ${conversationId}`);
+    console.log(`📤 User: ${user.id} (${user.role})`);
+
     if (!conversationId || !content?.trim()) {
       return res
         .status(400)
@@ -74,10 +107,40 @@ export async function sendMessage(req, res) {
     }
 
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation)
+    if (!conversation) {
+      console.log(`❌ Conversation not found: ${conversationId}`);
       return res.status(404).json({ message: "Conversation not found." });
+    }
 
-    // Check if this conversation is currently assigned
+    // ✅ Check if user is part of this conversation
+    let isAuthorized = false;
+
+    if (user.role === "student" && conversation.student_id === user.id) {
+      isAuthorized = true;
+      console.log(`✅ Student authorized`);
+    } 
+    else if (user.role === "counsellor") {
+      const counsellorId = await getCounsellorId(user.id);
+      if (counsellorId && conversation.counsellor_id === counsellorId) {
+        isAuthorized = true;
+        console.log(`✅ Counsellor authorized`);
+      }
+    }
+
+    if (!isAuthorized) {
+      console.log(`❌ User ${user.id} is not part of conversation ${conversationId}`);
+      return res.status(403).json({ 
+        message: "Access denied. You are not part of this conversation.",
+        details: {
+          userId: user.id,
+          userRole: user.role,
+          studentId: conversation.student_id,
+          counsellorId: conversation.counsellor_id
+        }
+      });
+    }
+
+    // ✅ Check if this conversation is currently assigned
     const isAssigned = await isConversationCurrentlyAssigned(
       conversation,
       user.role,
@@ -85,18 +148,11 @@ export async function sendMessage(req, res) {
     );
     if (!isAssigned) {
       return res.status(403).json({
-        message:
-          "Cannot send message: this counsellor/student is no longer assigned.",
+        message: "Cannot send message: this counsellor/student is no longer assigned.",
       });
     }
 
-    if (
-      conversation.student_id !== user.id &&
-      conversation.counsellor_id !== user.id
-    ) {
-      return res.status(403).json({ message: "Access denied." });
-    }
-
+    // ✅ Create the message
     const message = await Message.create({
       conversation_id: conversationId,
       sender_id: user.id,
@@ -106,12 +162,41 @@ export async function sendMessage(req, res) {
       type: "text",
     });
 
+    // ✅ Determine recipient ID (user_id, not counsellor_id)
     const isStudent = user.role === "student";
-    const recipientId = isStudent
-      ? conversation.counsellor_id
-      : conversation.student_id;
-    const unreadField = isStudent ? "counsellor_unread" : "student_unread";
+    let recipientId;
 
+    if (isStudent) {
+      // Student sending to counsellor - get counsellor's user_id
+      const counsellorUserId = await getUserIdFromCounsellorId(conversation.counsellor_id);
+      recipientId = counsellorUserId || conversation.counsellor_id;
+      console.log(`📤 Student sending to counsellor user_id: ${recipientId}`);
+    } else {
+      // Counsellor sending to student
+      recipientId = conversation.student_id;
+      console.log(`📤 Counsellor sending to student user_id: ${recipientId}`);
+    }
+
+    // ✅ Determine unread field for recipient
+    const [recipientUser] = await rawDb.query(
+      'SELECT role FROM users WHERE id = ? AND is_deleted = 0',
+      [recipientId]
+    );
+
+    let unreadField = "student_unread";
+    if (recipientUser && recipientUser.length > 0) {
+      if (recipientUser[0].role === "counsellor") {
+        const counsellorId = await getCounsellorId(recipientId);
+        if (counsellorId) {
+          unreadField = "counsellor_unread";
+        }
+      } else if (recipientUser[0].role === "student") {
+        unreadField = "student_unread";
+      }
+    }
+    console.log(`📊 Updating ${unreadField} for recipient ${recipientId}`);
+
+    // ✅ Update conversation
     await Conversation.findByIdAndUpdate(conversationId, {
       last_message: content.trim(),
       last_message_at: new Date(),
@@ -130,6 +215,7 @@ export async function sendMessage(req, res) {
 
     const fullMessagePayload = { message: messageData };
 
+    // ✅ Publish to Ably
     await publishToChannel(
       `conversation:${conversationId}`,
       "new_message",
@@ -151,7 +237,7 @@ export async function sendMessage(req, res) {
       isFromMe: true,
     });
 
-    // ---------- SSE NOTIFICATION FOR RECIPIENT (BELL) ----------
+    // ---------- SSE NOTIFICATION FOR RECIPIENT ----------
     try {
       const senderLabel = user.role === "counsellor" ? "Counsellor" : "Student";
       const sseEvent = {
@@ -167,10 +253,9 @@ export async function sendMessage(req, res) {
       console.log(`🔔 SSE chat notification sent to user ${recipientId}`);
     } catch (sseError) {
       console.error("❌ Failed to send SSE notification:", sseError);
-      // Don't break the response if SSE fails
     }
 
-    // ---------- STORE NOTIFICATION IN DATABASE (PERSISTENT) ----------
+    // ---------- STORE NOTIFICATION IN DATABASE ----------
     try {
       const preview = content.trim().slice(0, 60);
       const senderLabel = user.role === "counsellor" ? "Counsellor" : "Student";
@@ -188,38 +273,32 @@ export async function sendMessage(req, res) {
       console.log(`💾 Chat notification stored for user ${recipientId}`);
     } catch (storeError) {
       console.error("❌ Failed to store notification:", storeError);
-      // Don't break the response if storage fails
     }
 
     // ---------- SEND EMAIL NOTIFICATION TO RECIPIENT ----------
     try {
-      const recipientUser = await User.findOne({
-        where: { id: recipientId },
-        attributes: ["email", "name"],
-      });
+      const [recipientUserEmail] = await rawDb.query(
+        'SELECT id, name, email FROM users WHERE id = ? AND is_deleted = 0',
+        [recipientId]
+      );
 
-      if (recipientUser && recipientUser.email) {
+      if (recipientUserEmail && recipientUserEmail.length > 0) {
+        const userData = recipientUserEmail[0];
         await sendChatNotificationEmail({
-          recipientName: recipientUser.name || "User",
-          recipientEmail: recipientUser.email,
+          recipientName: userData.name || "User",
+          recipientEmail: userData.email,
           senderName: user.name,
           senderRole: user.role,
           messagePreview: content.trim(),
           conversationId: conversationId,
         });
-        console.log(
-          `📧 Chat notification email sent to ${recipientUser.email}`,
-        );
+        console.log(`📧 Chat notification email sent to ${userData.email}`);
       } else {
-        console.warn(
-          `⚠️ Could not find user or email for recipientId: ${recipientId}`,
-        );
+        console.warn(`⚠️ Could not find user for recipientId: ${recipientId}`);
       }
     } catch (emailError) {
-      // Don't break the message sending if email fails
       console.error("❌ Failed to send chat notification email:", emailError);
     }
-    // ------------------------------------------------------------
 
     res.status(201).json(messageData);
   } catch (error) {
@@ -247,47 +326,67 @@ export async function sendTyping(req, res) {
 
 export async function syncConversations(req, res) {
   try {
-    const leads = await Lead.findAll({
-      where: {
-        status: ["counseling", "applied", "visa", "success"],
-        counsellor_id: { [Op.ne]: null },
-      },
-      include: [{ model: User, as: "counsellor", attributes: ["id", "name"] }],
+    // ✅ Get counsellor ID mapping
+    const [counsellorRecords] = await rawDb.query(`
+      SELECT c.id as counsellor_id, c.user_id, u.name as counsellor_name
+      FROM counsellors c
+      JOIN users u ON u.id = c.user_id
+      WHERE c.is_deleted = 0
+    `);
+
+    const counsellorMap = {};
+    counsellorRecords.forEach(c => {
+      counsellorMap[c.counsellor_id] = c.counsellor_name || 'Counsellor';
     });
+
+    // ✅ Get all leads with counsellor_id and user_id
+    const [leads] = await rawDb.query(`
+      SELECT 
+        l.id as lead_id,
+        l.name as student_name,
+        l.email,
+        l.user_id,
+        l.counsellor_id
+      FROM leads l
+      WHERE l.counsellor_id IS NOT NULL
+        AND l.user_id IS NOT NULL
+        AND l.is_deleted = 0
+        AND l.status IN ('counseling', 'evaluated', 'applied', 'visa', 'success')
+    `);
 
     let created = 0;
 
     for (const lead of leads) {
-      const studentUser = await User.findOne({
-        where: { email: lead.email, role: "student" },
-        attributes: ["id", "name"],
-      });
-
-      if (!studentUser) continue;
+      const studentId = lead.user_id;
+      const counsellorId = lead.counsellor_id;
+      const counsellorName = counsellorMap[counsellorId] || 'Counsellor';
 
       const existing = await Conversation.findOne({
-        student_id: studentUser.id,
-        counsellor_id: lead.counsellor_id,
+        student_id: studentId,
+        counsellor_id: counsellorId,
       });
 
       if (!existing) {
         await Conversation.create({
-          student_id: studentUser.id,
-          counsellor_id: lead.counsellor_id,
-          student_name: lead.name,
-          counsellor_name: lead.counsellor?.name || "Counsellor",
+          student_id: studentId,
+          counsellor_id: counsellorId,
+          student_name: lead.student_name,
+          counsellor_name: counsellorName,
           last_message: "",
         });
         created++;
         console.log(
-          `💬 Created conversation: ${lead.name} ↔ ${lead.counsellor?.name}`,
+          `💬 Created conversation: ${lead.student_name} ↔ ${counsellorName}`,
         );
       }
     }
 
-    res.json({ message: `Sync complete. ${created} conversations created.` });
+    res.json({ 
+      success: true, 
+      message: `Sync complete. ${created} conversations created.` 
+    });
   } catch (error) {
-    console.error(error);
+    console.error("Sync conversations error:", error);
     res.status(500).json({ message: error.message });
   }
 }
@@ -297,29 +396,115 @@ export async function getConversations(req, res) {
     const userId = req.user.id;
     const role = req.user.role;
 
-    const query =
-      role === "student" ? { student_id: userId } : { counsellor_id: userId };
+    console.log(`📊 Fetching conversations for ${role} with ID: ${userId}`);
 
-    let conversations = await Conversation.find(query).sort({
-      last_message_at: -1,
-    });
+    let conversations = [];
 
-    // Attach is_currently_assigned to each conversation
-    const enrichedConversations = [];
-    for (let conv of conversations) {
-      const isAssigned = await isConversationCurrentlyAssigned(
-        conv,
-        role,
-        userId,
+    if (role === "student") {
+      const [lead] = await rawDb.query(
+        'SELECT counsellor_id FROM leads WHERE user_id = ? AND is_deleted = 0',
+        [userId]
       );
-      const convObj = conv.toObject();
-      convObj.is_currently_assigned = isAssigned;
-      enrichedConversations.push(convObj);
+      
+      console.log('📊 Student lead found:', lead);
+
+      if (!lead || lead.length === 0) {
+        console.log('⚠️ No lead found for student');
+        return res.json([]);
+      }
+
+      if (!lead[0].counsellor_id) {
+        console.log('⚠️ No counsellor assigned to student');
+        return res.json([]);
+      }
+
+      const counsellorId = lead[0].counsellor_id;
+      console.log(`📊 Counsellor ID: ${counsellorId}`);
+
+      let conversation = await Conversation.findOne({
+        student_id: userId,
+        counsellor_id: counsellorId,
+      });
+
+      if (!conversation) {
+        console.log('💬 Creating new conversation...');
+        
+        const [counsellor] = await rawDb.query(
+          'SELECT name FROM users WHERE id = (SELECT user_id FROM counsellors WHERE id = ?) AND is_deleted = 0',
+          [counsellorId]
+        );
+        const counsellorName = counsellor?.[0]?.name || 'Counsellor';
+
+        conversation = await Conversation.create({
+          student_id: userId,
+          counsellor_id: counsellorId,
+          student_name: req.user.name || 'Student',
+          counsellor_name: counsellorName,
+          last_message: "",
+        });
+        console.log('✅ Conversation created:', conversation._id);
+      }
+
+      if (conversation) {
+        const convObj = conversation.toObject();
+        convObj.is_currently_assigned = true;
+        conversations.push(convObj);
+      }
+    } 
+    else if (role === "counsellor") {
+      // ✅ Get counsellor ID from counsellors table
+      const counsellorId = await getCounsellorId(userId);
+      console.log(`📊 Counsellor ID from table: ${counsellorId}`);
+
+      if (!counsellorId) {
+        console.log('⚠️ No counsellor record found');
+        return res.json([]);
+      }
+
+      const [leads] = await rawDb.query(
+        'SELECT id, user_id, name FROM leads WHERE counsellor_id = ? AND is_deleted = 0 AND user_id IS NOT NULL',
+        [counsellorId]
+      );
+      
+      console.log(`📊 Counsellor has ${leads?.length || 0} assigned students`);
+
+      if (!leads || leads.length === 0) {
+        return res.json([]);
+      }
+
+      for (const lead of leads) {
+        let conversation = await Conversation.findOne({
+          student_id: lead.user_id,
+          counsellor_id: counsellorId,
+        });
+
+        if (!conversation) {
+          console.log(`💬 Creating conversation for student: ${lead.name}`);
+          conversation = await Conversation.create({
+            student_id: lead.user_id,
+            counsellor_id: counsellorId,
+            student_name: lead.name,
+            counsellor_name: req.user.name || 'Counsellor',
+            last_message: "",
+          });
+        }
+
+        if (conversation) {
+          const convObj = conversation.toObject();
+          convObj.is_currently_assigned = true;
+          conversations.push(convObj);
+        }
+      }
     }
 
-    res.json(enrichedConversations);
+    conversations.sort((a, b) => {
+      return new Date(b.last_message_at) - new Date(a.last_message_at);
+    });
+
+    console.log(`✅ Returning ${conversations.length} conversations`);
+    res.json(conversations);
   } catch (error) {
-    console.error(error);
+    console.error("getConversations error:", error);
     res.status(500).json({ message: error.message });
   }
 }
@@ -331,20 +516,49 @@ export async function getMessages(req, res) {
     const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
 
+    console.log(`📊 Getting messages for conversation: ${conversationId}`);
+    console.log(`📊 User: ${req.user.id} (${req.user.role})`);
+
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation)
+    if (!conversation) {
+      console.log(`❌ Conversation not found: ${conversationId}`);
       return res.status(404).json({ message: "Conversation not found." });
+    }
 
     const userId = req.user.id;
     const role = req.user.role;
 
-    if (role !== "admin") {
-      if (
-        conversation.student_id !== userId &&
-        conversation.counsellor_id !== userId
-      ) {
-        return res.status(403).json({ message: "Access denied." });
+    // ✅ ADMIN: Always allowed
+    if (role === "admin") {
+      console.log(`✅ Admin access granted`);
+    }
+    // ✅ STUDENT: Check if they are the student in the conversation
+    else if (role === "student" && conversation.student_id === userId) {
+      console.log(`✅ Student access granted: ${userId} matches student_id ${conversation.student_id}`);
+    }
+    // ✅ COUNSELLOR: Check if they are the counsellor in the conversation
+    else if (role === "counsellor") {
+      const counsellorId = await getCounsellorId(userId);
+      if (counsellorId && conversation.counsellor_id === counsellorId) {
+        console.log(`✅ Counsellor access granted: ${userId} matches counsellor ${counsellorId}`);
+      } else {
+        console.log(`❌ Counsellor access denied`);
+        return res.status(403).json({ 
+          message: "Access denied. You are not the counsellor for this conversation."
+        });
       }
+    }
+    else {
+      console.log(`❌ Access denied. User ${userId} (${role}) cannot access conversation ${conversationId}`);
+      return res.status(403).json({ 
+        message: "Access denied.",
+        details: {
+          userId,
+          role,
+          studentId: conversation.student_id,
+          counsellorId: conversation.counsellor_id
+        }
+      });
     }
 
     const messages = await Message.find({ conversation_id: conversationId })
@@ -352,9 +566,11 @@ export async function getMessages(req, res) {
       .skip(skip)
       .limit(limit);
 
+    console.log(`✅ Returning ${messages.length} messages`);
+
     res.json(messages.reverse());
   } catch (error) {
-    console.error(error);
+    console.error("getMessages error:", error);
     res.status(500).json({ message: error.message });
   }
 }

@@ -1,29 +1,42 @@
-import db from "../models/mysql/index.js";
-
-const { LeadActivityLog } = db;
+// src/services/activityLog.service.js
+import rawDb from "../config/db.js";
 
 export async function logActivity({
   leadId,
   actionType,
-  fromValue = null,
-  toValue = null,
-  note = null,
-  performedBy = null,
-  performedByRole = null,
-  performedByName = null,
+  fromValue,
+  toValue,
+  note,
+  performedBy,
+  performedByRole,
+  performedByName,
+  metadata,
 }) {
   try {
-    await LeadActivityLog.create({
-      lead_id: leadId,
-      action_type: actionType,
-      from_value: fromValue,
-      to_value: toValue,
-      note,
-      performed_by: performedBy,
-      performed_by_role: performedByRole,
-      performed_by_name: performedByName,
+    // ✅ rawDb.query() returns [result, fields]
+    const [result] = await rawDb.query(
+      `INSERT INTO lead_activity_logs 
+       (lead_id, action_type, from_value, to_value, note, user_id, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        leadId, 
+        actionType || 'note_added', 
+        fromValue || null, 
+        toValue || null, 
+        note || null,
+        performedBy || null
+      ]
+    );
+    
+    console.log(`✅ Log created for lead ${leadId}:`, { 
+      actionType, 
+      note: note || 'No note',
+      insertId: result.insertId
     });
-  } catch (err) {
-    console.error("⚠️ Activity log failed:", err.message);
+    
+    return result.insertId;
+  } catch (error) {
+    console.error("❌ Error logging activity:", error);
+    return null;
   }
 }
