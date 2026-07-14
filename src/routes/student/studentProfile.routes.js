@@ -1,6 +1,7 @@
+// src/routes/student/studentProfile.routes.js
 import express from "express";
 import auth from "../../middleware/auth.middleware.js";
-import { upload } from "../../middleware/upload.middleware.js"; 
+import { upload } from "../../middleware/upload.middleware.js";
 import {
   getStudentProfile,
   updateStudentProfile,

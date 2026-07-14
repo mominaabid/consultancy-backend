@@ -21,6 +21,7 @@ import configRoutes from "./config.routes.js";
 import countryRoutes from "./country.routes.js";
 import cityRoutes from "./city.routes.js";
 import universityRoutes from "./university.routes.js";
+import { getCounsellorProfile } from "../controllers/counsellor/counsellorProfile.controller.js";
 import StudentApplicationRoutes from "./student/application.routes.js"; // Ensure this import is correct
 // ADD THESE ROUTES
 
@@ -44,16 +45,19 @@ router.use("/student/payments", studentPaymentRoutes);
 router.use("/student", studentProfileRoutes);
 router.use("/student", StudentApplicationRoutes); // Ensure this route is correct
 // --- 3. Admin Routes ---
+router.use("/admin", adminProfileRoutes);
 router.use("/admin/leads", adminLeadRoutes);
 router.use("/admin/payments", adminPaymentRoutes);
 router.use("/admin", counsellorRoutes);
 router.use("/admin", adminProfileRoutes);
 
 // --- 4. Counsellor Routes ---
+
 router.use("/counsellor/leads", adminLeadRoutes);
 router.use("/counsellor/documents", counsellorDocumentRoutes);
 router.use("/counsellor", counsellorApplicationRoutes);
 router.use("/counsellor", counsellorProfileRoutes);
+
 
 // --- 5. Other Routes ---
 router.use("/notifications", notificationRoutes);
